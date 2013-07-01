@@ -1,0 +1,13 @@
+#! /bin/sh
+
+echo "this is test"
+currentdir=$(cd $(dirname $0) && pwd)
+
+target=~/.rbenv/plugins
+
+case1() {
+    cd ${target}
+    ${currentdir}/../git-parallel -j 4 -e "pull --rebase"
+}
+
+case1 && exit 0;
