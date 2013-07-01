@@ -1,0 +1,121 @@
+#! /bin/sh
+
+#
+# git-parallel
+#
+
+usage=$(cat<<EOS
+usage: git parallel [-h] [-n] [-j [jobs]] [-e command]]
+
+EOS)
+
+
+
+git_command=''
+repositorys=()
+worker_count=0
+max_worker=1
+git_color=TRUE
+tmpdir=$HOME/.git-parallel
+tmptimestamp=$(date +%Y_%m_%d_%H_%M_%S)
+
+#-------------------------------------------------------------------------------------------------------------------------
+# start init
+#-------------------------------------------------------------------------------------------------------------------------
+### parsing option
+while getopt -q -o j:e:nh -l jobs,execute,nocolor,help flag;do
+    case ${flag} in
+        j ) ### max worker semaphore
+            max_worker=${OPTARG}
+            ;;
+        e ) ### execute git command
+            git_command=${OPTARG}
+            ;;
+        n ) ### git config color.ui
+            git_color=FALSE
+            ;;
+        h | --help) ### help
+            echo ${usage}
+            exit 1;
+            ;;
+    esac
+done
+
+### tmpfile timestamp
+[ -d ${tmpdir} ] || mkdir -p ${tmpdir}
+
+### max_worker setting
+[ "${max_worker}" = '' ] && max_worker=1
+[ "${git_color}" = '' ] && git_color=TRUE
+
+### get repositorylist
+repositorys=$(find `pwd` -type d -maxdepth 1); 
+
+
+#-------------------------------------------------------------------------------------------------------------------------
+# functions
+#-------------------------------------------------------------------------------------------------------------------------
+
+#
+# save --local color.ui
+#
+git_localcolor_save() {
+    git_color_local=$(git config --local color.ui)
+    git config --local color.ui always
+}
+
+#
+# restore --local color.ui
+#
+git_localcolor_restore() {
+    if [ "${git_color_local}" != '' ];then
+        git config --local color.ui ${git_color_local}
+    else
+        git config --local --unset color.ui
+    fi
+}
+
+#
+# cd repo and execute git command.
+#
+git_fo() {
+    local repository=$1
+    local git_command=$2
+    local git_color=$3
+
+    local resultfile=${tmpdir}/${repository##*/}_tmp_${tmptimestamp}
+    [ -d ${repository}/.git ] || return;
+    cd ${repository}
+    [ "${git_color}" = TRUE ] && git_localcolor_save
+
+    echo "git ${git_command} ::: ${repository}" > ${resultfile}
+    git ${git_command} >> ${resultfile} 2>&1
+
+    [ "${git_color}" = TRUE ] && git_localcolor_restore
+}
+
+#
+# dump executed background process result
+#
+result_dump() {
+    wait; worker_count=0;
+    for filename in $(find ${tmpdir} -name "*${tmptimestamp}");do 
+        cat ${filename};echo;
+        rm -f ${filename}
+    done;
+}
+
+#-------------------------------------------------------------------------------------------------------------------------
+# main
+#-------------------------------------------------------------------------------------------------------------------------
+main() {
+    echo "start parallel: git ${git_command} ."; echo;
+    for x in ${repositorys};do
+        [ ${worker_count} -eq ${max_worker} ] && result_dump
+        worker_count=$(expr ${worker_count} + 1)
+        git_fo ${x} "${git_command}" ${git_color} &
+    done;
+    result_dump;
+}
+
+main && exit 0;
