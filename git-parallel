@@ -4,12 +4,19 @@
 # git-parallel
 #
 
-usage=$(cat<<EOS
+usage_exit() {
+    cat<<EOS
 usage: git parallel [-h] [-n] [-j [jobs]] [-e command]]
 
-EOS)
+git-parallel commands are:
+    -h  show help
+    -n  result is nocolor
+    -j  max job count
+    -e  execute command
+EOS
 
-
+    exit 1
+}
 
 git_command=''
 repositorys=()
@@ -23,7 +30,7 @@ tmptimestamp=$(date +%Y_%m_%d_%H_%M_%S)
 # start init
 #-------------------------------------------------------------------------------------------------------------------------
 ### parsing option
-while getopt -q -o j:e:nh -l jobs,execute,nocolor,help flag;do
+while getopts j:e:nh flag;do
     case ${flag} in
         j ) ### max worker semaphore
             max_worker=${OPTARG}
@@ -34,9 +41,8 @@ while getopt -q -o j:e:nh -l jobs,execute,nocolor,help flag;do
         n ) ### git config color.ui
             git_color=FALSE
             ;;
-        h | --help) ### help
-            echo ${usage}
-            exit 1;
+        h ) ### help
+            usage_exit
             ;;
     esac
 done
