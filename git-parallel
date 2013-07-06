@@ -54,7 +54,7 @@ done
 [ "${git_color}" = '' ] && git_color=TRUE
 
 ### get repositorylist
-repositorys=$(find `pwd` -type d -maxdepth 1); 
+repositorys=$(find `pwd` -maxdepth 1 -type d); 
 
 
 #------------------------------------------------
