@@ -90,7 +90,7 @@ git_fo() {
 
     local resultfile=${tmpdir}/${repository##*/}_tmp_${tmptimestamp}
     [ -d ${repository}/.git ] || return;
-    [ -f ${repository}/SKIP ] && return;
+    [ -f ${repository}/SKIP ] && echo "SKIP !!! ${repository}">> ${resultfile} 2>&1 && return;
     cd ${repository}
     [ "${git_color}" = TRUE ] && git_localcolor_save
 
