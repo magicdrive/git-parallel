@@ -10,9 +10,9 @@ usage: git parallel [-h] [-n] [-j [jobs]] [-e command]]
 
 git-parallel commands are:
     -h  show help
-    -n  result is nocolor
+    -c  put a color on the result
     -j  max job count
-    -e  execute command
+    -e  command to be executed
 EOS
     exit 1
 }
@@ -21,15 +21,14 @@ git_command=''
 repositorys=()
 worker_count=0
 max_worker=1
-git_color=TRUE
-tmpdir=$HOME/.git-parallel
-tmptimestamp=$(date +%Y_%m_%d_%H_%M_%S)
+git_color=FALSE
+tmpdir=$HOME/.git-parallel/${$}_$(date +%Y_%m_%d_%H_%M_%S)
 
 #------------------------------------------------
 # start init
 #------------------------------------------------
 ### parsing option
-while getopts j:e:nh flag;do
+while getopts j:e:ch flag;do
     case ${flag} in
         j ) ### max worker semaphore
             max_worker=${OPTARG}
@@ -37,8 +36,9 @@ while getopts j:e:nh flag;do
         e ) ### execute git command
             git_command=${OPTARG}
             ;;
-        n ) ### git config color.ui
-            git_color=FALSE
+        c ) ### git config color.ui
+            echo 
+            git_color=TRUE
             ;;
         h ) ### help
             usage_exit
@@ -46,12 +46,14 @@ while getopts j:e:nh flag;do
     esac
 done
 
+[ "${git_command}" = '' ] && usage_exit
+
 ### tmpfile timestamp
 [ -d ${tmpdir} ] || mkdir -p ${tmpdir}
 
 ### max_worker setting
 [ "${max_worker}" = '' ] && max_worker=1
-[ "${git_color}" = '' ] && git_color=TRUE
+[ "${git_color}" = '' ] && git_color=FALSE
 
 ### get repositorylist
 repositorys=$(find `pwd` -maxdepth 1 -type d); 
@@ -88,7 +90,7 @@ git_fo() {
     local git_command=$2
     local git_color=$3
 
-    local resultfile=${tmpdir}/${repository##*/}_tmp_${tmptimestamp}
+    local resultfile=${tmpdir}/${repository##*/}_tmp_result
     [ -d ${repository}/.git ] || return;
     [ -f ${repository}/SKIP ] && echo "SKIP !!! ${repository}">> ${resultfile} 2>&1 && return;
     cd ${repository}
@@ -105,7 +107,7 @@ git_fo() {
 #
 result_dump() {
     wait; worker_count=0;
-    for filename in $(find ${tmpdir} -name "*${tmptimestamp}");do 
+    for filename in $(find ${tmpdir} -name "*_tmp_result");do 
         cat ${filename};echo;
         rm -f ${filename}
     done;
@@ -122,6 +124,7 @@ main() {
         git_fo ${x} "${git_command}" ${git_color} &
     done;
     result_dump;
+    rm -fr ${tmpdir}
 }
 
 main && exit 0;
