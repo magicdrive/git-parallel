@@ -37,7 +37,6 @@ while getopts j:e:ch flag;do
             git_command=${OPTARG}
             ;;
         c ) ### git config color.ui
-            echo 
             git_color=TRUE
             ;;
         h ) ### help
