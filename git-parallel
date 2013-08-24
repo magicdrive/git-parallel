@@ -78,6 +78,9 @@ git_localcolor_restore() {
         git config --local color.ui ${git_color_local}
     else
         git config --local --unset color.ui
+        if [ $(git config --local --get-regexp "^color\.[.]*" | wc -l) -eq 0 ];then
+            git config --local --remove-section color
+        fi
     fi
 }
 
