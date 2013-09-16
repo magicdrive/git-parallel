@@ -9,8 +9,8 @@ man:
 
 install:
 	mkdir -p $(PREFIX)/bin/ $(PREFIX)/share/man/man1/
-	ln -sf $(CURRENTDIR)/git-parallel $(PREFIX)/bin/
-	ln -sf $(CURRENTDIR)/git-parallel.1 $(PREFIX)/share/man/man1/
+	cp -af $(CURRENTDIR)/git-parallel $(PREFIX)/bin/
+	cp -af $(CURRENTDIR)/git-parallel.1 $(PREFIX)/share/man/man1/
 
 uninstall:
 	rm -f $(PREFIX)/bin/git-parallel
