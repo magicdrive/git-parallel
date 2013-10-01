@@ -55,34 +55,12 @@ done
 [ "${git_color}" = '' ] && git_color=FALSE
 
 ### get repositorylist
-repositorys=$(find `pwd` -maxdepth 1 -type d); 
+repositorys=$(find `pwd` -maxdepth 1 -type d);
 
 
 #------------------------------------------------
 # functions
 #------------------------------------------------
-
-#
-# save --local color.ui
-#
-git_localcolor_save() {
-    git_color_local=$(git config --local color.ui)
-    git config --local color.ui always
-}
-
-#
-# restore --local color.ui
-#
-git_localcolor_restore() {
-    if [ "${git_color_local}" != '' ];then
-        git config --local color.ui ${git_color_local}
-    else
-        git config --local --unset color.ui
-        if [ $(git config --local --get-regexp "^color\.[.]*" | wc -l) -eq 0 ];then
-            git config --local --remove-section color
-        fi
-    fi
-}
 
 #
 # cd repo and execute git command.
@@ -96,12 +74,10 @@ git_fo() {
     [ -d ${repository}/.git ] || return;
     [ -f ${repository}/SKIP ] && echo "SKIP !!! ${repository}">> ${resultfile} 2>&1 && return;
     cd ${repository}
-    [ "${git_color}" = TRUE ] && git_localcolor_save
+    [ "${git_color}" = TRUE ] && git_color_config="-c color.ui=always"
 
     echo "git ${git_command} ::: ${repository}" > ${resultfile}
-    git ${git_command} >> ${resultfile} 2>&1
-
-    [ "${git_color}" = TRUE ] && git_localcolor_restore
+    git ${git_color_config} ${git_command} >> ${resultfile} 2>&1
 }
 
 #
@@ -109,7 +85,7 @@ git_fo() {
 #
 result_dump() {
     wait; worker_count=0;
-    for filename in $(find ${tmpdir} -name "*_tmp_result");do 
+    for filename in $(find ${tmpdir} -name "*_tmp_result");do
         cat ${filename};echo;
         rm -f ${filename}
     done;
