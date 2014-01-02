@@ -72,7 +72,7 @@ git_fo() {
 
     local resultfile=${tmpdir}/${repository##*/}_tmp_result
     [ -d ${repository}/.git ] || return;
-    [ -f ${repository}/SKIP ] && echo "SKIP !!! ${repository}">> ${resultfile} 2>&1 && return;
+    [ -f ${repository}/.git-freeze] && echo "FREEZE ${repository}">> ${resultfile} 2>&1 && return;
     cd ${repository}
     [ "${git_color}" = TRUE ] && git_color_config="-c color.ui=always"
 

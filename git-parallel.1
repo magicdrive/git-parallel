@@ -45,11 +45,11 @@ $ tree -L 1
 .fi
 .RE
 .PP
-However repository to the presence of the file named SKIP is ignored.
+However repository to the presence of the file named .git\-freeze is ignored.
 .PP
 .RS
 .nf
-$ $(cd git_repo1 && touch SKIP)
+$ $(cd git_repo1 && touch .git-freeze)
 $ tree -L 1
 .
 ├── git_repo1 -> command not execute!

@@ -36,9 +36,9 @@ This command is executed in parallel to the git repository in the current direct
     ├── git_repo6
     └── git_repo7
 
-However repository to the presence of the file named SKIP is ignored.
+However repository to the presence of the file named .git-freeze is ignored.
 
-    $ $(cd git_repo1 && touch SKIP)
+    $ $(cd git_repo1 && touch .git-freeze)
     
     $ tree -L 1
     .
