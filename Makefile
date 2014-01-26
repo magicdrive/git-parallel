@@ -1,4 +1,4 @@
-PREFIX=${HOME}
+PREFIX=${HOME}/local
 CURRENTDIR=$(shell pwd)
 
 all:
