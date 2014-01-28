@@ -21,6 +21,7 @@ git_command=''
 repositorys=()
 worker_count=0
 max_worker=1
+maxdepth=2
 git_color=FALSE
 tmpdir=$HOME/.git-parallel/${$}_$(date +%Y_%m_%d_%H_%M_%S)
 
@@ -28,7 +29,7 @@ tmpdir=$HOME/.git-parallel/${$}_$(date +%Y_%m_%d_%H_%M_%S)
 # start init
 #------------------------------------------------
 ### parsing option
-while getopts j:e:ch flag;do
+while getopts j:e:m:ch flag;do
   case ${flag} in
     j ) ### max worker semaphore
       max_worker=${OPTARG}
@@ -38,6 +39,9 @@ while getopts j:e:ch flag;do
       ;;
     c ) ### git config color.ui
       git_color=TRUE
+      ;;
+    m ) ### git config maxdepth
+      maxdepth=$((${OPTARG} + 1))
       ;;
     h ) ### help
       usage_exit
@@ -55,7 +59,7 @@ done
 [ "${git_color}" = '' ] && git_color=FALSE
 
 ### get repositorylist
-repositorys=$(find $(pwd) -maxdepth 2 -name '.git' -type d | perl -p -e "s{^$(pwd)/}{}" | perl -p -e "s{/\.git$}{}" | grep -v "^$")
+repositorys=$(find $(pwd) -maxdepth ${maxdepth} -name '.git' -type d | perl -p -e "s{^$(pwd)/}{}" | perl -p -e "s{/\.git$}{}" | grep -v "^$")
 
 #------------------------------------------------
 # functions
