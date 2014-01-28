@@ -55,7 +55,7 @@ done
 [ "${git_color}" = '' ] && git_color=FALSE
 
 ### get repositorylist
-repositorys=$(find `pwd` -maxdepth 1 -type d);
+repositorys=$(find $(pwd) -maxdepth 1 -type d | perl -p -e "s{$(pwd)(?:/)?}{}g" | grep -v "^$")
 
 
 #------------------------------------------------
@@ -95,7 +95,7 @@ result_dump() {
 # main
 #------------------------------------------------
 main() {
-    echo "start parallel: git ${git_command} ."; echo;
+  echo "start parallel: git ${git_command} $(pwd)"; echo;
     for x in ${repositorys};do
         [ ${worker_count} -eq ${max_worker} ] && result_dump
         worker_count=$(expr ${worker_count} + 1)
