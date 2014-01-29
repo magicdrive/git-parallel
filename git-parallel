@@ -17,6 +17,17 @@ EOS
   exit 1
 }
 
+freeze_repo() {
+  if [ -d  "${repo}/.git" ];then
+    echo "generate ${repo}/.git-freeze"
+    touch ${repo}/.git-freeze
+    exit 0
+  else
+    echo "${repo} is not a git repository."
+    exit 1
+  fi
+}
+
 git_command=''
 repositorys=()
 worker_count=0
@@ -29,7 +40,7 @@ tmpdir=$HOME/.git-parallel/${$}_$(date +%Y_%m_%d_%H_%M_%S)
 # start init
 #------------------------------------------------
 ### parsing option
-while getopts j:e:m:ch flag;do
+while getopts j:e:m:z:ch flag;do
   case ${flag} in
     j ) ### max worker semaphore
       max_worker=${OPTARG}
@@ -37,11 +48,15 @@ while getopts j:e:m:ch flag;do
     e ) ### execute git command
       git_command=${OPTARG}
       ;;
+    m ) ### search repos maxdepth
+      maxdepth=$((${OPTARG} + 1))
+      ;;
     c ) ### git config color.ui
       git_color=TRUE
       ;;
-    m ) ### git config maxdepth
-      maxdepth=$((${OPTARG} + 1))
+    z ) ### gen git-freeze file.
+      repo=${OPTARG}
+      freeze_repo
       ;;
     h ) ### help
       usage_exit
