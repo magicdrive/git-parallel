@@ -1,5 +1,5 @@
 PREFIX=${HOME}/local
-CURRENTDIR=$(shell pwd)
+CURRENTDIR=$(shell pwd -L | perl -p -e 's/ /\\ /g')
 
 all:
 	@echo "make [intall|uninstall]"

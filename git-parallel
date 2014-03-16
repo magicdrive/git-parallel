@@ -74,7 +74,7 @@ done
 [ "${git_color}" = '' ] && git_color=FALSE
 
 ### get repositorylist
-repositorys=$(find $(pwd) -maxdepth ${maxdepth} -name '.git' -type d | perl -p -e "s{^$(pwd)/}{}" | perl -p -e "s{/\.git$}{}" | grep -v "^$")
+repositorys=$(find . -maxdepth ${maxdepth} -name '.git' -type d | perl -p -e "s{^\./}{}" | perl -p -e "s{/\.git$}{}" | grep -v "^$")
 
 #------------------------------------------------
 # functions
