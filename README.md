@@ -49,7 +49,7 @@ However repository to the presence of the file named .git-freeze is ignored.
 	
 Author
 
-Copyright (c) 2013 Hiroshi IKEGAMI
+Copyright (c) 2013 - 2021 Hiroshi IKEGAMI
 
 MIT License
 
