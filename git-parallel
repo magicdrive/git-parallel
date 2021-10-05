@@ -5,10 +5,10 @@
 #
 # Usage:
 #  * git-parallel [-h|--help]                       # Show this help.
-#  * git-parallel [-j|--jobs] job-count             # Execute in parallel with `jobcount`
-#  * git-parallel [-c|--color]                      # Show Colored Output.
+#  * git-parallel [-j|--jobs] job-count             # Execute in parallel with `job-count`
+#  * git-parallel [-c|--color]                      # Show colored output.
 #  * git-parallel [-m|--maxdepth] depth-count       # Search target git-repositories in maxdepth.
-#  * git-parallel [-e|--execute] command|!command   # Execute command target repositories
+#  * git-parallel [-e|--execute] command|!command   # Execute command in target repositories
 #  * git-parallel [-v|--version]                    # Show git-parallel version info.
 #  * git-parallel [-d|--dry-run]                    # With `--execute`, Dry run it.
 #  * git-parallel [-l|--list]                       # List up target git repositories.
@@ -16,7 +16,7 @@
 #  * git-parallel [-f|--find] path                  # Search git repositories in path.
 #  * git-parallel [-s|--silent]                     # Execute bad no output.
 #  * git-parallel [-F|--freeze] repository-path     # Generate .git-parallel.freeze file.
-#  * git-parallel [-P|--prossess-code] id-string    # Use Specified id in execute.
+#  * git-parallel [-P|--process-code] id-string     # Use Specified id in execute.
 #
 # Author
 #
@@ -42,3 +42,236 @@
 # LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+export GIT_PARALLEL_DEAULT_COLOR_MODE="${GIT_PARALLEL_DEAULT_COLOR_MODE:-"off"}"
+export GIT_PARALLEL_DEAULT_SILENT_MODE="${GIT_PARALLEL_DEAULT_SILENT_MODE:-"off"}"
+export GIT_PARALLEL_DEAULT_SILENT_MODE="${GIT_PARALLEL_DEAULT_SILENT_MODE:-"off"}"
+export GIT_PARALLEL_DEAULT_JOBS="${GIT_PARALLEL_DEAULT_JOBS:-"2"}"
+export GIT_PARALLEL_DEAULT_MAXDEPTH="${GIT_PARALLEL_DEAULT_MAXDEPTH:-"0"}"
+export GIT_PARALLEL_DEAULT_START_DIR="${GIT_PARALLEL_DEAULT_MAXDEPTH:-$(cd ./ && pwd)}"
+
+git::parallel::help() {
+  cat << HELP > 2 && exit 1
+Usage:
+  * git-parallel [-h|--help]                       # Show this help.
+  * git-parallel [-j|--jobs] job-count             # Execute in parallel with \`job-count\`
+  * git-parallel [-c|--color]                      # Show colored output.
+  * git-parallel [-n|--no-color]                   # Show No Colored output.
+  * git-parallel [-m|--maxdepth] depth-count       # Search target git-repositories in maxdepth.
+  * git-parallel [-e|--execute] command|!command   # Execute command in target repositories
+  * git-parallel [-v|--version]                    # Show git-parallel version info.
+  * git-parallel [-d|--dry-run]                    # With \`--execute\`, Dry run it.
+  * git-parallel [-l|--list]                       # List up target git repositories.
+  * git-parallel [-t|--targets] repository-list    # Specified target git-repositories
+  * git-parallel [-f|--find] path                  # Search git repositories in path.
+  * git-parallel [-s|--silent]                     # Execute bad no output.
+  * git-parallel [-F|--freeze] repository-path     # Generate .git-parallel.freeze file.
+  * git-parallel [-P|--process-code] id-string     # Use Specified id in execute.
+HELP
+}
+
+
+git::parallel::version() {
+    echo "git-parallel v1.0.0"
+}
+
+git::parallel::arg::validate() {
+}
+
+
+git::parallel::find_targets() {
+}
+
+git::parallel::lock() {
+}
+
+git::parallel::unlock() {
+}
+
+git::parallel::enqueue_all() {
+}
+
+git::parallel::dequeue() {
+}
+
+git::parallel::exec::async() {
+}
+
+git::parallel::exec::await() {
+}
+
+git::parallel::process_code() {
+}
+
+git::parallel::trap::sigint() {
+}
+
+git::parallel::trap::exit() {
+}
+
+git::parallel::trap::freeze() {
+}
+
+git::parallel::main() {
+    
+}
+
+
+
+
+
+
+
+
+### config
+
+git::parallel::config::jobs() {
+}
+
+git::parallel::config::color() {
+}
+
+git::parallel::config::maxdepth() {
+}
+
+git::parallel::config::command() {
+}
+
+git::parallel::config::set_dry_run_mode() {
+}
+
+git::parallel::config::list() {
+}
+
+git::parallel::config::targets() {
+}
+
+git::parallel::config::silent() {
+}
+
+git::parallel::config::override_process_code() {
+}
+
+git::parallel::util::get_extire argument() {
+    
+}
+
+
+
+
+
+
+optspec=":j:m:e:t:f:F:P:-:hcvdls"
+while getopts "$optspec" optchar; do
+    case "${optchar}" in
+        -)
+            case "${OPTARG}" in
+                help)
+                    git::parallelconfig::help && exit 1
+                    ;;
+                jobs)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::config::jobs "${val}"
+                    ;;
+                color)
+                    git::parallel::config::color "TRUE"
+                    ;;
+                no-color)
+                    git::parallel::config::color "FALSE"
+                    ;;
+                maxdepth)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::config::maxdepth "${val}"
+                    ;;
+                execute)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::config::execute_command "${val}"
+                    ;;
+                version)
+                    git::parallel::version && exit 1
+                    ;;
+                dry-run)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::config::dry_run
+                    ;;
+                list)
+                    git::parallel::config::show_list
+                    ;;
+                targets)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::config::targets $(git::parallel::util::get_extire)
+                    ;;
+                find)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::config::targets $(git::parallel::util::get_extire)
+                    ;;
+                silent)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::config::silent
+                    ;;
+                freeze)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::freeze
+                    ;;
+                process-code)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::override_process_code "${val}"
+                    ;;
+                *)
+                    if [ "$OPTERR" = 1 ] && [ "${optspec:0:1}" != ":" ]; then
+                        echo "Unknown option --${OPTARG}" >&2
+                    fi
+                    ;;
+            esac;;
+        h)
+            __usage_exit; exit 1
+            ;;
+        j)
+            \tmux ls; exit 0
+            ;;
+        c)
+            __tmux_attach_simple "${OPTARG}"; exit 0
+            ;;
+        n)
+            __tmux_attach_simple "${OPTARG}"; exit 0
+            ;;
+        m)
+            \tmux detach-client; exit 1
+            ;;
+        e)
+            \tmux kill-session -t "${OPTARG}"; exit 1
+            ;;
+        v)
+            __tmux_sock "${OPTARG}"; exit 0
+            ;;
+        d)
+            __tmux_mouse; exit 0
+            ;;
+        l)
+            __tmux_mouse; exit 0
+            ;;
+        t)
+            __tmux_mouse; exit 0
+            ;;
+        f)
+            __tmux_mouse; exit 0
+            ;;
+        s)
+            __tmux_mouse; exit 0
+            ;;
+        F)
+            __tmux_mouse; exit 0
+            ;;
+        P)
+            __tmux_mouse; exit 0
+            ;;
+        *)
+            if [ "$OPTERR" != 1 ] || [ "${optspec:0:1}" = ":" ]; then
+                echo "Non-option argument: '-${OPTARG}'" >&2
+            fi
+            exit 1
+            ;;
+    esac
+done
+
+git::parallel::main && exit 0
