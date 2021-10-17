@@ -16,7 +16,6 @@
 #  * git-parallel [-f|--find] path                  # Search git repositories in path.
 #  * git-parallel [-s|--silent]                     # Execute bad no output.
 #  * git-parallel [-F|--freeze] repository-path     # Generate .git-parallel.freeze file.
-#  * git-parallel [-P|--process-code] id-string     # Use Specified id in execute.
 #
 # Author
 #
@@ -55,20 +54,15 @@ trap git::parallel::exit HUP INT QUIT TERM
 git::parallel::help() {
 cat << HELP > 2 && exit 1
 Usage:
+  * git-parallel [OPTIONS] -- [COMMAND]            # Run the command in parallel much to multiple repositories.
+OPTIONS:
   * git-parallel [-h|--help]                       # Show this help.
   * git-parallel [-j|--jobs] job-count             # Execute in parallel with \`job-count\`
-  * git-parallel [-c|--color]                      # Show colored output.
-  * git-parallel [-n|--no-color]                   # Show No Colored output.
   * git-parallel [-m|--maxdepth] depth-count       # Search target git-repositories in maxdepth.
-  * git-parallel [-e|--execute] command|!command   # Execute command in target repositories
   * git-parallel [-v|--version]                    # Show git-parallel version info.
-  * git-parallel [-d|--dry-run]                    # With \`--execute\`, Dry run it.
   * git-parallel [-l|--list]                       # List up target git repositories.
-  * git-parallel [-t|--targets] repository-list    # Specified target git-repositories
-  * git-parallel [-f|--find] path                  # Search git repositories in path.
-  * git-parallel [-s|--silent]                     # Execute bad no output.
+  * git-parallel [-d|--targets] target-derectory   # Specified target git-repositories
   * git-parallel [-F|--freeze] repository-path     # Generate .git-parallel.freeze file.
-  * git-parallel [-P|--process-code] id-string     # Use Specified id in execute.
 HELP
 }
 
@@ -76,20 +70,30 @@ git::parallel::version() {
     echo "git-parallel v1.0.0"
 }
 
+git::parallel::freeze() {
+    local repo="$1"
+    if [ -d ${repo}/.git ]
+        touch ${repo}/.git-parallel.freeze
+        echo ${repo} now frozen.
+    else
+        echo ${repo} is not git-repository. > 2
+    fi
+}
+
 git::parallel::reccursive_ps_killer() {
     local target_ps=$1
-    for x in $(ps --ppid ${target_ps}--no-heading | awk '{ print $1 }') do
+    for x in $(ps --ppid ${target_ps} --no-heading | awk '{ print $1 }') do
         git::parallel::reccursive_ps_killer "${x}"
     done
     kill -9 ${target_ps}
 }
 
 git::parallel::find_targets() {
-    export TARGET_REPOSITORYS=$(find -L "${GIT_PARALLEL_DEAULT_START_DIR}" \
+    find -L "${GIT_PARALLEL_DEAULT_START_DIR}" \
         -maxdepth ${maxdepth} -name '.git' -type d | \
         perl -p -e "s{^\./}{}" | \
         perl -p -e "s{/\.git$}{}" | \
-        grep -v "^$")
+        grep -v "^$"
 }
 
 git::parallel::exit() {
@@ -99,13 +103,10 @@ git::parallel::exit() {
 git::parallel::execute() {
     local repository=$1
     local repository_name=$(basename ${repository})
-    local git_command=$2
-    local git_color=$3
+    local git_command="${GIT_PARALLEL_EXEC_CMD}"
+    local git_color="TRUE"
 
-    local resultfile=${tmpdir}/${repository_name##*/}_tmp_result
     [ -d "${repository}/.git" ] || return;
-    [ -f "${repository}/.git-freeze" ] && echo "FREEZE ${repository}" >> "${resultfile}" 2>&1 && return;
-    cd ${repository}
     [ "${git_color}" = TRUE ] && git_color_config="-c color.ui=always"
 
     if [ "${git_color}" = TRUE ];then
@@ -116,26 +117,50 @@ git::parallel::execute() {
         print_repo_name="${repository_name}"
     fi
 
-    echo -e "result git ${print_cmd} ::: ${print_repo_name} "
+    cd ${repository}
+    echo -e "result git ${print_cmd} ::: ${print_repo_name}"
+
+    if [ -f "${repository}/.git-parallel.freeze" ];then
+        echo skip.
+        echo .git-parallel.freeze found.
+        echo ${repository} is frozen.
+        return
+    fi
+
     git -C ${repository} ${git_color_config} ${git_command} 2>&1
+}
+
+git::parallel::job_pack() {
+    local repo=${TARGET_REPOSITORIES[0]}
+    TARGET_REPOSITORIES=("${TARGET_REPOSITORIES[@]:1}")
+    if [[ -n ${repo} ]];then
+        exec {task_fd}< <(git::parallel::execute "${repo}")
+        fd_list=(${FD_LIST[@]} ${task_fd})
+    fi
 }
 
 git::parallel::main() {
     git::parallel::setup
+    FD_LIST=()
+    TARGET_REPOSITORIES=($(git::parallel::find_targets))
+
     echo "start parallel: ${GIT_PARALLEL_EXEC_CMD} ";
     echo;
 
+    while true; do
+        for x in $(seq "${GIT_PARALLEL_DEAULT_JOBS}"); do
+            git::parallel::job_pack
+        done
 
-    local cr=${array[0]}
-    array=("${array[@]:1}")
-    if [[ -n $cr ]];then
-        exec {task_fd}< <( echo "Start: ${cr}"; sleep 3; test_of_test "Done: ${cr}" )
-        fd_array=(${fd_array[@]} $task_fd)
-
-    fi
-
+        for x in ${FD_LIST[@]}; do
+            cat <&${x} &
+        done
+        wait
+        if [[ -z ${TARGET_REPOSITORIES} ]];then
+            break
+        fi
+    done
 }
-
 
 
 optspec=":j:m:d:-:hvls"
@@ -151,6 +176,10 @@ while getopts "$optspec" optchar; do
                     ;;
                 list)
                     git::parallel::config::show_list && exit 1
+                    ;;
+                freeze)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    git::parallel::freeze "${val}" && exit 1
                     ;;
                 jobs)
                     val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
@@ -182,6 +211,9 @@ while getopts "$optspec" optchar; do
         l)
             git::parallel::show_list && exit 1
             ;;
+        F)
+            git::parallel::freeze "${OPTARG}" && exit 1
+            ;;
         j)
             GIT_PARALLEL_DEAULT_JOBS="${OPTARG}"
             ;;
@@ -190,9 +222,6 @@ while getopts "$optspec" optchar; do
             ;;
         d)
             GIT_PARALLEL_DEAULT_START_DIR="${OPTARG}"
-            ;;
-        s)
-            GIT_PARALLEL_DEAULT_SILENT_MODE="1"
             ;;
         *)
             if [ "$OPTERR" != 1 ] || [ "${optspec:0:1}" = ":" ]; then
