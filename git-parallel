@@ -1,18 +1,21 @@
-#! /bin/bash
+#! /usr/bin/env bash
 
 #
 # git parallel -- Run the command in parallel much to multiple repositories
 #
-# Usage:
-#   git-parallel [OPTIONS] -- [COMMAND] # Run the command in parallel much to multiple repositories.
+# USAGE:
+#   git-parallel [OPTIONS] -- [GITCMD|:::CMD] # Run the command in parallel much to multiple repositories.
 # OPTIONS:
-#   * [-h|--help]                       # Show this help.
-#   * [-j|--jobs] job-count             # Execute in parallel with \`job-count\`
-#   * [-m|--maxdepth] depth-count       # Search target git-repositories in maxdepth.
-#   * [-v|--version]                    # Show git-parallel version info.
-#   * [-l|--list]                       # List up target git repositories.
-#   * [-d|--targets] target-derectory   # Specified target git-repositories
-#   * [-F|--freeze] repository-path     # Generate .git-parallel.freeze file.
+#   * [-h|--help]                           # Show this help.
+#   * [-j|--jobs] job-count                 # Execute in parallel with \`job-count\`
+#   * [-m|--maxdepth] depth-count           # Search target git-repositories in maxdepth.
+#   * [-V|--version]                        # Show git-parallel version info.
+#   * [-c|--color] auto|always|never        # Configure output color.
+#   * [-l|--list]                           # List up target git repositories.
+#   * [-q|--silent]                         # Execute silent. (no output)
+#   * [-v|--verbose]                        # Execute verbose. (default.)
+#   * [-d|--targets] target-derectory       # Specified target git-repositories
+#   * [-F|--freeze] repository-path         # Generate .git-parallel.freeze file.
 #
 # Author
 #
@@ -39,9 +42,8 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-export GIT_PARALLEL_DEAULT_COLOR_MODE="${GIT_PARALLEL_DEAULT_COLOR_MODE:-"off"}"
-export GIT_PARALLEL_DEAULT_SILENT_MODE="${GIT_PARALLEL_DEAULT_SILENT_MODE:-"off"}"
-export GIT_PARALLEL_DEAULT_SILENT_MODE="${GIT_PARALLEL_DEAULT_SILENT_MODE:-"off"}"
+export GIT_PARALLEL_DEAULT_COLOR_MODE="${GIT_PARALLEL_DEAULT_COLOR_MODE:-"auto"}"
+export GIT_PARALLEL_DEAULT_SILENT_MODE="${GIT_PARALLEL_DEAULT_SILENT_MODE:-"FALSE"}"
 export GIT_PARALLEL_DEAULT_JOBS="${GIT_PARALLEL_DEAULT_JOBS:-"2"}"
 export GIT_PARALLEL_DEAULT_MAXDEPTH="${GIT_PARALLEL_DEAULT_MAXDEPTH:-""}"
 export GIT_PARALLEL_DEAULT_START_DIR="${GIT_PARALLEL_DEAULT_START_DIR:-$(cd ./ && pwd)}"
@@ -50,16 +52,19 @@ trap git::parallel::exit HUP INT QUIT TERM
 
 git::parallel::help() {
 cat << HELP >&2
-Usage:
-  git-parallel [OPTIONS] -- [COMMAND] # Run the command in parallel much to multiple repositories.
+USAGE:
+  git-parallel [OPTIONS] -- [GITCMD|:::CMD] # Run the command in parallel much to multiple repositories.
 OPTIONS:
-  * [-h|--help]                       # Show this help.
-  * [-j|--jobs] job-count             # Execute in parallel with \`job-count\`
-  * [-m|--maxdepth] depth-count       # Search target git-repositories in maxdepth.
-  * [-v|--version]                    # Show git-parallel version info.
-  * [-l|--list]                       # List up target git repositories.
-  * [-d|--targets] target-derectory   # Specified target git-repositories
-  * [-F|--freeze] repository-path     # Generate .git-parallel.freeze file.
+  * [-h|--help]                           # Show this help.
+  * [-j|--jobs] job-count                 # Execute in parallel with \`job-count\`
+  * [-m|--maxdepth] depth-count           # Search target git-repositories in maxdepth.
+  * [-V|--version]                        # Show git-parallel version info.
+  * [-c|--color] auto|always|never        # Configure output color.
+  * [-l|--list]                           # List up target git repositories.
+  * [-q|--silent]                         # Execute silent. (no output)
+  * [-v|--verbose]                        # Execute verbose. (default.)
+  * [-d|--targets] target-derectory       # Specified target git-repositories
+  * [-F|--freeze] repository-path         # Generate .git-parallel.freeze file.
 HELP
 }
 
@@ -85,6 +90,35 @@ git::parallel::find_targets() {
             grep -v "^$"))
 }
 
+git::parallel::command() {
+    if [[ ${GIT_PARALLEL_EXEC_CMD} =~ ^[[:blank:]]*:::[[:blank:]]+(.*)$ ]];then
+        CMD_MODE="bare"
+        CMD=${BASH_REMATCH[1]}
+    elif [[ ${GIT_PARALLEL_EXEC_CMD} =~ ^[[:blank:]]*git[[:blank:]]+(.*)$ ]];then
+        CMD_MODE="git"
+        CMD=${BASH_REMATCH[1]}
+    else
+        CMD_MODE="git"
+        CMD=${GIT_PARALLEL_EXEC_CMD}
+    fi
+}
+
+git::parallel::color() {
+    local color="${GIT_PARALLEL_DEAULT_COLOR_MODE}"
+
+    if [[ $color = always ]];then
+        GIT_PARALLEL_COLOR="TRUE"
+    elif [[ $color = never ]]; then
+        GIT_PARALLEL_COLOR="FALSE"
+    elif [[ $color = auto ]]; then
+      if [[ -t 1 ]]; then
+        GIT_PARALLEL_COLOR="TRUE"
+      else
+        GIT_PARALLEL_COLOR="FALSE"
+      fi
+    fi
+}
+
 git::parallel::version() {
     echo "git-parallel v1.0.0"
 }
@@ -104,20 +138,31 @@ git::parallel::exit() {
     git::parallel::reccursive_ps_killer $$
 }
 
+git::parallel::show_list() {
+    git::parallel::find_targets
+    for x in ${TARGET_REPOSITORIES[@]};do
+        echo "${x}"
+    done
+}
+
 git::parallel::execute() {
     local repository=$1
     local repository_name=$(basename ${repository})
     local git_command="${GIT_PARALLEL_EXEC_CMD}"
-    local git_color="TRUE"
 
     [ -d "${repository}/.git" ] || return;
-    [ "${git_color}" = TRUE ] && git_color_config="-c color.ui=always"
 
-    if [ "${git_color}" = TRUE ];then
-        print_cmd="\033[30;42mresult\033[0m \033[1;35m${git_command}\033[0m"
+    if [[ GIT_PARALLEL_COLOR = TRUE ]];then
+        git_color_config="-c color.ui=always"
+    elif [[ GIT_PARALLEL_COLOR = FALSE ]];then
+        git_color_config="-c color.ui=none"
+    fi
+
+    if [ "${GIT_PARALLEL_COLOR}" = TRUE ];then
+        print_cmd="\033[30;42mresult\033[0m \033[1;35m${GIT_PARALLEL_EXEC_CMD}\033[0m"
         print_repo_name="\033[1;33m${repository_name}\033[0m"
     else
-        print_cmd="result ${git_command}"
+        print_cmd="result ${GIT_PARALLEL_EXEC_CMD}"
         print_repo_name="${repository_name}"
     fi
 
@@ -131,8 +176,11 @@ git::parallel::execute() {
         return
     fi
 
-    git_command="$(echo ${git_command} | perl -p -e 's/^git//')"
-    git -C ${repository} ${git_color_config} ${git_command} 2>&1
+    if [[ $CMD_MODE = git ]];then
+        git -C ${repository} ${git_color_config} ${CMD} 2>&1
+    elif [[ $CMD_MODE = bare ]];then
+        ${CMD} 2>&1
+    fi
     echo
 }
 
@@ -148,9 +196,14 @@ git::parallel::job_pack() {
 git::parallel::main() {
     FD_LIST=()
 
+    git::parallel::command
+    git::parallel::color
     git::parallel::find_targets
-    echo "start parallel: ${GIT_PARALLEL_EXEC_CMD} ";
-    echo;
+
+    if [[ ${GIT_PARALLEL_DEAULT_SILENT_MODE} = FALSE ]];then
+        echo "start parallel: ${GIT_PARALLEL_EXEC_CMD} ";
+        echo;
+    fi
 
     while true; do
         for x in $(seq "${GIT_PARALLEL_DEAULT_JOBS}"); do
@@ -158,9 +211,15 @@ git::parallel::main() {
         done
         wait
 
-        for x in ${FD_LIST[@]}; do
-            cat <&${x}
-        done
+        if [[ ${GIT_PARALLEL_DEAULT_SILENT_MODE} = TRUE ]];then
+            for x in ${FD_LIST[@]}; do
+                : <&${x}
+            done
+        else
+            for x in ${FD_LIST[@]}; do
+                cat <&${x}
+            done
+        fi
 
         if [[ -z ${TARGET_REPOSITORIES} ]];then
             break
@@ -168,8 +227,12 @@ git::parallel::main() {
     done
 }
 
+if [[ ! $1 =~ ^-+.*$ ]] || [[ $@ =~ ^-[[:blank:]]+.*$ ]];then
+    echo "Unknown option $@" >&2
+    exit 1
+fi
 
-optspec=":j:m:d:-:hvls"
+optspec=":j:m:c:d:-:hvFVlsq"
 while getopts "$optspec" optchar; do
     case "${optchar}" in
         -)
@@ -181,7 +244,7 @@ while getopts "$optspec" optchar; do
                     git::parallel::version && exit 1
                     ;;
                 list)
-                    git::parallel::config::show_list && exit 1
+                    git::parallel::show_list && exit 1
                     ;;
                 freeze)
                     val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
@@ -190,6 +253,10 @@ while getopts "$optspec" optchar; do
                 jobs)
                     val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
                     GIT_PARALLEL_DEAULT_JOBS="${val}"
+                    ;;
+                color)
+                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    GIT_PARALLEL_DEAULT_COLOR_MODE="${val}"
                     ;;
                 maxdepth)
                     val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
@@ -200,7 +267,10 @@ while getopts "$optspec" optchar; do
                     GIT_PARALLEL_DEAULT_START_DIR="${val}"
                     ;;
                 silent)
-                    GIT_PARALLEL_DEAULT_SILENT_MODE="1"
+                    GIT_PARALLEL_DEAULT_SILENT_MODE="TRUE"
+                    ;;
+                verbose)
+                    GIT_PARALLEL_DEAULT_SILENT_MODE="FALSE"
                     ;;
                 *)
                     echo "Unknown option --${OPTARG}" >&2
@@ -210,7 +280,7 @@ while getopts "$optspec" optchar; do
         h)
             git::parallel::help && exit 1
             ;;
-        v)
+        V)
             git::parallel::version && exit 1
             ;;
         l)
@@ -222,11 +292,20 @@ while getopts "$optspec" optchar; do
         j)
             GIT_PARALLEL_DEAULT_JOBS="${OPTARG}"
             ;;
+        c)
+            GIT_PARALLEL_DEAULT_COLOR_MODE="${OPTARG}"
+            ;;
         m)
             GIT_PARALLEL_DEAULT_MAXDEPTH="${OPTARG}"
             ;;
         d)
             GIT_PARALLEL_DEAULT_START_DIR="${OPTARG}"
+            ;;
+        q)
+            GIT_PARALLEL_DEAULT_SILENT_MODE="TRUE"
+            ;;
+        v)
+            GIT_PARALLEL_DEAULT_SILENT_MODE="FALSE"
             ;;
         *)
             if [ "$OPTERR" != 1 ] || [ "${optspec:0:1}" = ":" ]; then
@@ -243,7 +322,6 @@ GIT_PARALLEL_EXEC_CMD=$@
 
 if [[ -z ${GIT_PARALLEL_EXEC_CMD} ]];then
     git::parallel::help && exit 1
-
 fi
 
 git::parallel::main && exit 0
