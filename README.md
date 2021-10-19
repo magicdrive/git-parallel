@@ -5,48 +5,35 @@ NAME
 ----
 git-parallel - Run the command in parallel much to multiple repositories
 
-Synopsis
---------
-* git-parallel [-h] [-n] [-j \<jobs\>] [-e \<command\>]
-
 Usage
 -----
-    git-parallel commands are:  
-        -h  show help  
-        -c  put a color on the result  
-        -j  max job count  
-        -e  command to be executed  
+
+```
+USAGE:
+
+  git-parallel [OPTIONS] -- [GITCMD|:::CMD] # Run the command in parallel much to multiple repositories.
+
+OPTIONS:
+
+  * [-h|--help]                             # Show this help.
+  * [-j|--jobs] job-count                   # Execute in parallel with \`job-count\`
+  * [-m|--maxdepth] depth-count             # Search target git-repositories in maxdepth.
+  * [-V|--version]                          # Show git-parallel version info.
+  * [-c|--color] auto|always|never          # Configure output color.
+  * [-l|--list]                             # List up target git repositories.
+  * [-q|--silent]                           # Execute silent. (no output)
+  * [-v|--verbose]                          # Execute verbose. (default.)
+  * [-d|--targets] target-derectory         # Specified target git-repositories
+  * [-F|--freeze] repository-path           # Generate .git-parallel.freeze file.
+
 ex)
 
-    $ git parallel -c -j 4 -e "pull --rebase"
+    git parallel --color -jobs 2 --silent -- pull --rebase
+
+    git parallel --maxdepth 3 -jobs 4 -- ::: ls -lha
+```
 
 
-What's this?
-------------
-This command is executed in parallel to the git repository in the current directory directly under.
-
-    $ tree -L 1
-    .
-    ├── git_repo1
-    ├── git_repo2
-    ├── git_repo3
-    ├── git_repo4
-    ├── not_git_repo -> command not execute!
-    ├── git_repo5
-    ├── git_repo6
-    └── git_repo7
-
-However repository to the presence of the file named .git-freeze is ignored.
-
-    $ $(cd git_repo1 && touch .git-freeze)
-    
-    $ tree -L 1
-    .
-    ├── git_repo1 -> command not execute!
-    ├── git_repo2
-    ├── git_repo3
-    └── git_repo4
-	
 Author
 
 Copyright (c) 2013 - 2021 Hiroshi IKEGAMI

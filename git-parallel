@@ -4,8 +4,11 @@
 # git parallel -- Run the command in parallel much to multiple repositories
 #
 # USAGE:
+#
 #   git-parallel [OPTIONS] -- [GITCMD|:::CMD] # Run the command in parallel much to multiple repositories.
+#
 # OPTIONS:
+#
 #   * [-h|--help]                           # Show this help.
 #   * [-j|--jobs] job-count                 # Execute in parallel with \`job-count\`
 #   * [-m|--maxdepth] depth-count           # Search target git-repositories in maxdepth.
@@ -53,18 +56,27 @@ trap git::parallel::exit HUP INT QUIT TERM
 git::parallel::help() {
 cat << HELP >&2
 USAGE:
+
   git-parallel [OPTIONS] -- [GITCMD|:::CMD] # Run the command in parallel much to multiple repositories.
+
 OPTIONS:
-  * [-h|--help]                           # Show this help.
-  * [-j|--jobs] job-count                 # Execute in parallel with \`job-count\`
-  * [-m|--maxdepth] depth-count           # Search target git-repositories in maxdepth.
-  * [-V|--version]                        # Show git-parallel version info.
-  * [-c|--color] auto|always|never        # Configure output color.
-  * [-l|--list]                           # List up target git repositories.
-  * [-q|--silent]                         # Execute silent. (no output)
-  * [-v|--verbose]                        # Execute verbose. (default.)
-  * [-d|--targets] target-derectory       # Specified target git-repositories
-  * [-F|--freeze] repository-path         # Generate .git-parallel.freeze file.
+
+  * [-h|--help]                             # Show this help.
+  * [-j|--jobs] job-count                   # Execute in parallel with \`job-count\`
+  * [-m|--maxdepth] depth-count             # Search target git-repositories in maxdepth.
+  * [-V|--version]                          # Show git-parallel version info.
+  * [-c|--color] auto|always|never          # Configure output color.
+  * [-l|--list]                             # List up target git repositories.
+  * [-q|--silent]                           # Execute silent. (no output)
+  * [-v|--verbose]                          # Execute verbose. (default.)
+  * [-d|--targets] target-derectory         # Specified target git-repositories
+  * [-F|--freeze] repository-path           # Generate .git-parallel.freeze file.
+
+ex)
+
+    git parallel --color -jobs 2 --silent -- pull --rebase
+
+    git parallel --maxdepth 3 -jobs 4 -- ::: ls -lha
 HELP
 }
 
