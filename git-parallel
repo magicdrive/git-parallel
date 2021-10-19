@@ -252,15 +252,30 @@ while getopts "$optspec" optchar; do
                     ;;
                 jobs)
                     val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                    GIT_PARALLEL_DEAULT_JOBS="${val}"
+                    if [[ ${val} =~ ^[[:digit:]]+$ ]]; then
+                        GIT_PARALLEL_DEAULT_JOBS="${val}"
+                    else
+                        echo "Unknown option --jobs ${val}" >&2
+                        exit 1
+                    fi
                     ;;
                 color)
                     val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                    GIT_PARALLEL_DEAULT_COLOR_MODE="${val}"
+                    if [[ ${val} =~ ^(auto|always|never)$ ]]; then
+                        GIT_PARALLEL_DEAULT_COLOR_MODE="${val}"
+                    else
+                        echo "Unknown option --color ${val}" >&2
+                        exit 1
+                    fi
                     ;;
                 maxdepth)
                     val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
-                    GIT_PARALLEL_DEAULT_MAXDEPTH="${val}"
+                    if [[ ${val} =~ ^[[:digit:]]+$ ]]; then
+                        GIT_PARALLEL_DEAULT_MAXDEPTH="${val}"
+                    else
+                        echo "Unknown option --maxdepth ${val}" >&2
+                        exit 1
+                    fi
                     ;;
                 target)
                     val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
@@ -290,13 +305,28 @@ while getopts "$optspec" optchar; do
             git::parallel::freeze "${OPTARG}" && exit 1
             ;;
         j)
-            GIT_PARALLEL_DEAULT_JOBS="${OPTARG}"
+            if [[ ${OPTARG} =~ ^[[:digit:]]+$ ]]; then
+                GIT_PARALLEL_DEAULT_JOBS="${OPTARG}"
+            else
+                echo "Unknown option -j ${OPTARG}" >&2
+                exit 1
+            fi
             ;;
         c)
-            GIT_PARALLEL_DEAULT_COLOR_MODE="${OPTARG}"
+            if [[ ${OPTARG} =~ ^(auto|always|never)$ ]]; then
+                GIT_PARALLEL_DEAULT_COLOR_MODE="${OPTARG}"
+            else
+                echo "Unknown option -c ${OPTARG}" >&2
+                exit 1
+            fi
             ;;
         m)
-            GIT_PARALLEL_DEAULT_MAXDEPTH="${OPTARG}"
+            if [[ ${OPTARG} =~ ^[[:digit:]]+$ ]]; then
+                GIT_PARALLEL_DEAULT_MAXDEPTH="${OPTARG}"
+            else
+                echo "Unknown option -m ${OPTARG}" >&2
+                exit 1
+            fi
             ;;
         d)
             GIT_PARALLEL_DEAULT_START_DIR="${OPTARG}"
