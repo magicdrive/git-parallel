@@ -4,9 +4,6 @@ CURRENTDIR=$(shell pwd -L | perl -p -e 's/ /\\ /g')
 all:
 	@echo "make [intall|uninstall]"
 
-man:
-	[ -e $(shell which md2man-roff) ] && md2man-roff $(CURRENTDIR)/README.md > $(CURRENTDIR)/git-parallel.1
-
 install:
 	mkdir -p $(PREFIX)/bin/ $(PREFIX)/share/man/man1/
 	cp -af $(CURRENTDIR)/git-parallel $(PREFIX)/bin/
