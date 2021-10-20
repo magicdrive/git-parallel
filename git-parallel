@@ -141,7 +141,7 @@ git::parallel::freeze() {
         touch ${repo}/.git-parallel.freeze
         echo ${repo} now frozen.
     else
-        echo ${repo} is not git-repository. > 2
+        echo ${repo} is not git-repository. >&2
     fi
 }
 
@@ -164,10 +164,10 @@ git::parallel::execute() {
 
     [ -d "${repository}/.git" ] || return;
 
-    if [[ GIT_PARALLEL_COLOR = TRUE ]];then
-        git_color_config="-c color.ui=always"
-    elif [[ GIT_PARALLEL_COLOR = FALSE ]];then
-        git_color_config="-c color.ui=none"
+    if [[ $GIT_PARALLEL_COLOR = TRUE ]];then
+        GIT_COLOR_CONFIG="-c color.ui=always"
+    elif [[ $GIT_PARALLEL_COLOR = FALSE ]];then
+        GIT_COLOR_CONFIG="-c color.ui=never"
     fi
 
     if [ "${GIT_PARALLEL_COLOR}" = TRUE ];then
@@ -185,11 +185,12 @@ git::parallel::execute() {
         echo skip.
         echo .git-parallel.freeze found.
         echo ${repository} is frozen.
+        echo
         return
     fi
 
     if [[ $CMD_MODE = git ]];then
-        git -C ${repository} ${git_color_config} ${CMD} 2>&1
+        git -C ${repository} ${GIT_COLOR_CONFIG} ${CMD} 2>&1
     elif [[ $CMD_MODE = bare ]];then
         ${CMD} 2>&1
     fi
@@ -248,7 +249,7 @@ if [[ ! $1 =~ ^-+.*$ ]] || [[ $@ =~ ^-[[:blank:]]+.*$ ]];then
     exit 1
 fi
 
-optspec=":j:m:c:d:-:hvFVlsq"
+optspec=":j:m:c:d:F:-:hvVlsq"
 while getopts "$optspec" optchar; do
     case "${optchar}" in
         -)
