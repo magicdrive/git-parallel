@@ -239,6 +239,10 @@ git::parallel::main() {
     done
 }
 
+if [[ -z $@ ]];then
+    git::parallel::help && exit 1
+fi
+
 if [[ ! $1 =~ ^-+.*$ ]] || [[ $@ =~ ^-[[:blank:]]+.*$ ]];then
     echo "Unknown option $@" >&2
     exit 1
