@@ -16,7 +16,7 @@ USAGE:
 OPTIONS:
 
   * [-h|--help]                             # Show this help.
-  * [-j|--jobs] job-count                   # Execute in parallel with \`job-count\`
+  * [-j|--jobs] job-count                   # Execute in parallel with `job-count`
   * [-m|--maxdepth] depth-count             # Search target git-repositories in maxdepth.
   * [-V|--version]                          # Show git-parallel version info.
   * [-c|--color] auto|always|never          # Configure output color.
