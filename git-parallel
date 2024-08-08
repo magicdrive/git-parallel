@@ -22,7 +22,7 @@
 #
 # Author
 #
-# Copyright (c) 2013 - 2021 Hiroshi IKEGAMI
+# Copyright (c) 2013 - 2024 Hiroshi IKEGAMI
 #
 # MIT License
 #
@@ -135,7 +135,7 @@ git::parallel::color() {
 }
 
 git::parallel::version() {
-    echo "git-parallel v1.0.1"
+    echo "git-parallel v1.0.2"
 }
 
 git::parallel::freeze() {
