@@ -36,7 +36,7 @@ ex)
 
 Author
 
-Copyright (c) 2013 - 2021 Hiroshi IKEGAMI
+Copyright (c) 2013 - 2024 Hiroshi IKEGAMI
 
 MIT License
 
