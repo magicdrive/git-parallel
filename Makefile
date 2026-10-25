@@ -24,7 +24,7 @@ SHELLCHECK ?= shellcheck
 SHELL_SOURCES := git-parallel tests/run.sh scripts/check-version.sh scripts/homebrew-e2e.sh
 
 # renovate: datasource=go depName=github.com/magicdrive/hephaestus
-HEPHAESTUS_VERSION ?= v1.1.0
+HEPHAESTUS_VERSION ?= v1.1.1-0.20261025105032-4414722a804d
 HEPHAESTUS ?= go run github.com/magicdrive/hephaestus@$(HEPHAESTUS_VERSION)
 # renovate: datasource=go depName=github.com/rhysd/actionlint
 ACTIONLINT_VERSION ?= v1.7.12

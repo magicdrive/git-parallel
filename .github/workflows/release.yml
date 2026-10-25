@@ -37,7 +37,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: scripts/check-version.sh "$TAG"
       - name: Archive and checksum
-        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        uses: magicdrive/hephaestus@4414722a804d958179fd547c26d7b2fe762e308e # v1.1.1-0.20261025105032-4414722a804d
         with:
           command: run
           stages: archive,checksum
@@ -92,7 +92,7 @@ jobs:
         # Checks the tap token, the tap layout, a newer formula on the tap
         # and the pull request branch before the release becomes public,
         # since a published release cannot be taken back.
-        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        uses: magicdrive/hephaestus@4414722a804d958179fd547c26d7b2fe762e308e # v1.1.1-0.20261025105032-4414722a804d
         with:
           command: run
           stages: formula,tap
@@ -106,12 +106,12 @@ jobs:
             dist/git-parallel_*_noarch.tar.gz
             dist/git-parallel_*_checksums.txt
       - name: Publish the GitHub release
-        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        uses: magicdrive/hephaestus@4414722a804d958179fd547c26d7b2fe762e308e # v1.1.1-0.20261025105032-4414722a804d
         with:
           command: release
       - name: Generate the formula and open a tap pull request
         # Prereleases (vX.Y.Z-rc.N) are skipped by brews.skip_upload: auto.
-        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        uses: magicdrive/hephaestus@4414722a804d958179fd547c26d7b2fe762e308e # v1.1.1-0.20261025105032-4414722a804d
         with:
           command: run
           stages: formula,tap
