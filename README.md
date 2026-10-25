@@ -33,6 +33,34 @@ ex)
     git parallel --maxdepth 3 --jobs 4 -- ::: ls -lha
 ```
 
+Install
+-------
+
+```
+make install            # copies git-parallel and git-parallel.1 under PREFIX (default: ~/local)
+make uninstall
+```
+
+With Homebrew (from the first release published with Hephaestus on):
+
+```
+brew install magicdrive/tap/git-parallel
+```
+
+`git-parallel` runs with bash 3.2 (macOS) or later. Once it is on your `PATH`,
+git runs it as `git parallel`.
+
+Development
+-----------
+
+```
+make check                    # shellcheck + tests
+make test TEST_BASH=/bin/bash # tests with a specific bash
+```
+
+Releases are made with [Hephaestus](https://github.com/magicdrive/hephaestus):
+see [docs/development/releasing.md](docs/development/releasing.md).
+
 
 Author
 

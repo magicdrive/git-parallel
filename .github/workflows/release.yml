@@ -1,0 +1,119 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    # The full CI, at the tagged commit, is the release gate.
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  build:
+    # Packages the release with a read-only token, no environment and no
+    # secrets. git-parallel is a script: there is no build stage, only the
+    # noarch archive and its checksum. Only the verified dist/ moves on.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The script reports the tag being released
+        # The version is written in git-parallel (--version); refuse a tag
+        # that does not match it before anything is packaged.
+        env:
+          TAG: ${{ github.ref_name }}
+        run: scripts/check-version.sh "$TAG"
+      - name: Archive and checksum
+        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        with:
+          command: run
+          stages: archive,checksum
+          fresh: "true"
+          github-token: ""
+      - name: Verify dist
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          archive="dist/git-parallel_${version}_noarch.tar.gz"
+          tar -tzvf "$archive"
+          [[ "$(tar -tzf "$archive" | sort | tr '\n' ' ')" == "README.md git-parallel git-parallel.1 " ]]
+          (cd dist && sha256sum -c "git-parallel_${version}_checksums.txt")
+          tar -xzOf "$archive" git-parallel | cmp - git-parallel
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    # Publishes the verified dist/ from the build job; nothing is built here.
+    # The environment holds HOMEBREW_TAP_GITHUB_TOKEN; its deployment policy
+    # must allow tags v* (see docs/development/releasing.md).
+    needs: [ci, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write     # create the release and upload assets
+      id-token: write     # sign provenance attestations
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dist
+          path: dist
+      - name: The tap token is available
+        # Without a token the dry run below cannot read the tap and would
+        # pass. Only whether it is set reaches this step, never its value.
+        env:
+          HAS_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN != '' }}
+        run: |
+          [[ "$HAS_TAP_TOKEN" == true ]] || { echo "::error::HOMEBREW_TAP_GITHUB_TOKEN is not set in the release environment"; exit 1; }
+      - name: Rehearse the formula and tap pull request (read-only)
+        # Checks the tap token, the tap layout, a newer formula on the tap
+        # and the pull request branch before the release becomes public,
+        # since a published release cannot be taken back.
+        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        with:
+          command: run
+          stages: formula,tap
+          dry-run: "true"
+          github-token: ""
+          tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/git-parallel_*_noarch.tar.gz
+            dist/git-parallel_*_checksums.txt
+      - name: Publish the GitHub release
+        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        with:
+          command: release
+      - name: Generate the formula and open a tap pull request
+        # Prereleases (vX.Y.Z-rc.N) are skipped by brews.skip_upload: auto.
+        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        with:
+          command: run
+          stages: formula,tap
+          github-token: ""
+          tap-token: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

@@ -1,0 +1,168 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # The release workflow runs this whole CI on the tagged commit first.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Called from release.yml, github.workflow is "Release": the group differs
+  # from the release workflow's own, so the call never cancels itself.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # No go.mod here: Go only runs pinned tools (actionlint, hephaestus).
+          go-version: stable
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - name: ShellCheck
+        run: shellcheck --version && make lint
+      - name: actionlint
+        run: make actionlint
+      - name: Renovate configuration
+        run: make renovate-check
+
+  test:
+    # Behavior tests (tests/run.sh) with every bash git-parallel supports:
+    # bash 5 on Linux and macOS, and the bash 3.2 that ships with macOS.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, bash: bash, major: "5"}
+          - {os: ubuntu-24.04-arm, bash: bash, major: "5"}
+          - {os: macos-latest, bash: /bin/bash, major: "3"}
+          - {os: macos-latest, bash: homebrew, major: "5"}
+    name: test (${{ matrix.os }}, bash ${{ matrix.major }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select bash
+        id: bash
+        env:
+          WANT: ${{ matrix.bash }}
+          MAJOR: ${{ matrix.major }}
+        run: |
+          set -euo pipefail
+          if [[ "$WANT" == homebrew ]]; then
+            WANT="$(brew --prefix)/bin/bash"
+            if [[ ! -x "$WANT" ]]; then
+              HOMEBREW_NO_AUTO_UPDATE=1 brew install bash
+            fi
+          fi
+          "$WANT" --version | head -1
+          # shellcheck disable=SC2016 # expanded by the bash under test
+          got="$("$WANT" -c 'echo "${BASH_VERSINFO[0]}"')"
+          [[ "$got" == "$MAJOR" ]] || { echo "::error::$WANT is bash $got, expected $MAJOR"; exit 1; }
+          echo "path=$WANT" >> "$GITHUB_OUTPUT"
+      - name: Tests
+        env:
+          TEST_BASH: ${{ steps.bash.outputs.path }}
+        run: make test TEST_BASH="$TEST_BASH"
+      - name: Smoke (--version / --help)
+        env:
+          TEST_BASH: ${{ steps.bash.outputs.path }}
+        run: |
+          set -uo pipefail
+          # --version and --help exit 1 (historical behavior).
+          out="$("$TEST_BASH" ./git-parallel --version)"; rc=$?
+          echo "$out"
+          [[ $rc == 1 && "$out" =~ ^git-parallel\ v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          help="$("$TEST_BASH" ./git-parallel --help 2>&1)"; rc=$?
+          [[ $rc == 1 && "$help" == USAGE:* ]] || exit 1
+
+  hephaestus:
+    # The release packaging, as the release workflow runs it, without a tag
+    # or any token: configuration check, then archive and checksum.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check configuration
+        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        with:
+          command: check
+          github-token: ""
+      - name: Snapshot (archive, checksum)
+        id: snapshot
+        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        with:
+          command: run
+          stages: archive,checksum
+          snapshot: "true"
+          fresh: "true"
+          github-token: ""
+      - name: Verify the archive
+        env:
+          ARTIFACTS: ${{ steps.snapshot.outputs.artifacts }}
+        run: |
+          set -euo pipefail
+          echo "$ARTIFACTS" | jq .
+          echo "$ARTIFACTS" | jq -e 'length == 2'
+          archive=dist/git-parallel_0.0.0-SNAPSHOT_noarch.tar.gz
+          tar -tzvf "$archive"
+          [[ "$(tar -tzf "$archive" | sort | tr '\n' ' ')" == "README.md git-parallel git-parallel.1 " ]]
+          tar -tzvf "$archive" | grep -Eq '^-rwxr-xr-x .* git-parallel$'
+          (cd dist && sha256sum -c git-parallel_0.0.0-SNAPSHOT_checksums.txt)
+          # The archived script is the checked-out one.
+          tar -xzOf "$archive" git-parallel | cmp - git-parallel
+
+  homebrew-e2e:
+    # Archive → formula (file:// url) → brew style, audit --strict,
+    # install, test, git parallel, uninstall with the real Homebrew.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+          cache: false
+      - name: Put Homebrew on PATH (Linux)
+        if: runner.os == 'Linux'
+        run: echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+      - name: Homebrew end-to-end
+        run: make homebrew-e2e
+
+  ci-gate:
+    # One check that covers every job; the release workflow needs it too.
+    if: always()
+    needs: [lint, test, hephaestus, homebrew-e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do [[ "$r" == success ]] || exit 1; done
