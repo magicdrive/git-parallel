@@ -38,7 +38,7 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: scripts/check-version.sh "$TAG"
       - name: Archive and checksum
-        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
         with:
           command: run
           stages: archive,checksum
@@ -84,7 +84,7 @@ jobs:
         # prerelease and tap for this tag, from hephaestus.yaml. Fails for a
         # prerelease whose plan would update the tap.
         id: plan
-        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
         with:
           command: plan
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -104,7 +104,7 @@ jobs:
         # Checks the tap token, the tap layout, a newer formula on the tap
         # and the pull request branch before the release becomes public,
         # since a published release cannot be taken back.
-        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
         with:
           command: run
           stages: formula,tap
@@ -118,14 +118,14 @@ jobs:
             dist/git-parallel_*_noarch.tar.gz
             dist/git-parallel_*_checksums.txt
       - name: Publish the GitHub release
-        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
         with:
           command: release
       - name: Generate the formula and open a tap pull request
         # Prereleases (vX.Y.Z-rc.N) skip the tap (brews.skip_upload: auto),
         # so the plan skips this step.
         if: steps.plan.outputs.tap == 'publish'
-        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
         with:
           command: run
           stages: formula,tap
