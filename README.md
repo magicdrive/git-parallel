@@ -54,12 +54,12 @@ Development
 -----------
 
 ```
-make check                    # shellcheck + tests
+make check                    # shellcheck + tests + make publish wiring
 make test TEST_BASH=/bin/bash # tests with a specific bash
 ```
 
-Releases are made with [Hephaestus](https://github.com/magicdrive/hephaestus):
-see [docs/development/releasing.md](docs/development/releasing.md).
+Releases are made with [Hephaestus](https://github.com/magicdrive/hephaestus)
+(`make publish vX.Y.Z`): see [docs/development/releasing.md](docs/development/releasing.md).
 
 
 Author

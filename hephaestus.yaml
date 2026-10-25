@@ -6,10 +6,11 @@
 # and ARM, from one url.
 #
 #   make snapshot                 # archive + checksum locally, no tag needed
-#   make preflight tag=vX.Y.Z     # release safety checks before pushing a tag
+#   make publish-check vX.Y.Z     # version check + release preflight (read-only)
+#   make publish vX.Y.Z           # checks, then tags, pushes, follows, verifies
 #
 # The release workflow (.github/workflows/release.yml) runs on a v* tag
-# after CI passes. See docs/development/releasing.md.
+# after CI passes and is the only publisher. See docs/development/releasing.md.
 version: 1
 
 project:
@@ -64,8 +65,9 @@ brews:
       pull_request:
         enabled: true
 
-# Release safety checks before a tag is pushed: make preflight tag=vX.Y.Z
-# (hephaestus preflight, see the Hephaestus docs/preflight.md).
+# Release safety checks before a tag is pushed: make publish-check vX.Y.Z
+# runs them (hephaestus preflight --strict, see the Hephaestus
+# docs/preflight.md); make preflight tag=vX.Y.Z runs them alone.
 preflight:
   workflow: release.yml
   environment: release

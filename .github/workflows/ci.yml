@@ -27,7 +27,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          # No go.mod here: Go only runs pinned tools (actionlint, hephaestus).
+          # No go.mod here: Go only runs a pinned tool (actionlint).
           go-version: stable
           cache: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -80,6 +80,10 @@ jobs:
         env:
           TEST_BASH: ${{ steps.bash.outputs.path }}
         run: make test TEST_BASH="$TEST_BASH"
+      - name: make publish wiring
+        # The publish targets with a stub in place of hephaestus: no git or
+        # GitHub access. GNU Make 4 on Linux, 3.81 on macOS.
+        run: make test-publish
       - name: Smoke (--version / --help)
         env:
           TEST_BASH: ${{ steps.bash.outputs.path }}
@@ -95,7 +99,8 @@ jobs:
 
   hephaestus:
     # The release packaging, as the release workflow runs it, without a tag
-    # or any token: configuration check, then archive and checksum.
+    # or any token: configuration check, release plan, then archive and
+    # checksum. No Go: the action runs its verified release binary.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -103,13 +108,32 @@ jobs:
         with:
           persist-credentials: false
       - name: Check configuration
-        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
         with:
           command: check
           github-token: ""
+      - name: Plan a release candidate
+        id: plan-rc
+        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
+        with:
+          command: plan
+          tag: v0.0.0-rc.1
+      - name: Plan a stable release
+        id: plan-stable
+        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
+        with:
+          command: plan
+          tag: v0.0.0
+      - name: A release candidate never updates the tap
+        env:
+          RC: ${{ steps.plan-rc.outputs.prerelease }}/${{ steps.plan-rc.outputs.tap }}
+          STABLE: ${{ steps.plan-stable.outputs.prerelease }}/${{ steps.plan-stable.outputs.tap }}
+        run: |
+          echo "rc: $RC, stable: $STABLE"
+          [[ "$RC" == true/skip && "$STABLE" == false/publish ]]
       - name: Snapshot (archive, checksum)
         id: snapshot
-        uses: magicdrive/hephaestus@550d48f64917749742574b5c2ff1b292940ff71a # v1.1.0
+        uses: magicdrive/hephaestus@bae0e2b3cbf41ad27299e0cfc3517a6affc7e15e # v1.2.0-rc.1
         with:
           command: run
           stages: archive,checksum
@@ -146,6 +170,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
+          # make homebrew-e2e installs the hephaestus CLI with go install.
           go-version: stable
           cache: false
       - name: Put Homebrew on PATH (Linux)

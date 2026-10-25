@@ -2,72 +2,104 @@
 
 Releases are built and published by [Hephaestus](https://github.com/magicdrive/hephaestus)
 (`hephaestus.yaml`) from `.github/workflows/release.yml` when a `v*` tag is
-pushed. git-parallel is a Bash script, so a release is one
-architecture-independent archive, `git-parallel_<version>_noarch.tar.gz`
-(`git-parallel`, `git-parallel.1`, `README.md`), its checksum file
-`git-parallel_<version>_checksums.txt`, build provenance attestations, and a
-pull request to [magicdrive/homebrew-tap](https://github.com/magicdrive/homebrew-tap)
-for the `git-parallel` formula.
+pushed. **That workflow is the only thing that publishes.** `make publish
+vX.Y.Z` is the way to push the tag: it checks that the version can be
+released, asks, creates and pushes one annotated tag, then follows the
+release run and verifies what it published (Hephaestus `hephaestus publish`,
+its `docs/publish.md`). It never publishes, uploads or writes to GitHub
+itself.
+
+git-parallel is a Bash script, so a release is one architecture-independent
+archive, `git-parallel_<version>_noarch.tar.gz` (`git-parallel`,
+`git-parallel.1`, `README.md`), its checksum file
+`git-parallel_<version>_checksums.txt`, build provenance attestations for
+both, and, for a stable version, a pull request to
+[magicdrive/homebrew-tap](https://github.com/magicdrive/homebrew-tap) for the
+`git-parallel` formula.
 
 ## One-time setup (repository owner)
 
-- **Environment `release`** holds the secret `HOMEBREW_TAP_GITHUB_TOKEN`: a
-  fine-grained token (or GitHub App token) with `contents: write` and
-  `pull-requests: write` on `magicdrive/homebrew-tap` only.
-- **Its deployment policy must allow tags `v*`.** The release job runs for a
-  tag push; a policy that lists only *branches* `v*` rejects it before any
-  step runs. Add a tag policy `v*`, and remove the branch policy `v*`
-  (`hephaestus preflight` reports a branch policy as a failure: a branch
-  named like a version could read the release secret).
-- Recommended: a ruleset that protects `main`, and a tag ruleset on `v*`
-  that forbids updating and deleting tags (see the Hephaestus
-  `docs/preflight.md#recommended-settings`).
+`make publish-check vX.Y.Z` checks each of these it can read (secret names
+only, never values).
+
+| Item | Value |
+| --- | --- |
+| Ruleset on `main` | Active; requires the status check **`ci-gate`** (the job in `ci.yml` that needs every other job) |
+| Ruleset on tags `refs/tags/v*` | Active; forbids **deletion** and **update** of tags (not creation) |
+| Environment `release` | Deployment branches and tags: selected policies, **tags `v*` only**, no branch policy. A branch policy `v*` fails the check: a branch named like a version could read the release secret |
+| Secret in `release` | `HOMEBREW_TAP_GITHUB_TOKEN`: a fine-grained token (or GitHub App token) with `contents: write` and `pull-requests: write` on `magicdrive/homebrew-tap` only. Only stable releases receive it |
+| Locally | `git`, an authenticated `gh` (`gh auth status`), Go (the Makefile runs `go run github.com/magicdrive/hephaestus@$(HEPHAESTUS_VERSION)`; `HEPHAESTUS=/path/to/hephaestus` uses an installed v1.2.0 or later instead), GNU Make 3.81 or later |
 
 ## Steps
 
 1. **Set the version.** The version is written in the script
    (`git::parallel::version`, printed by `git parallel --version`); nothing
    rewrites it at release time. Change it to the new version in a pull
-   request and merge it after CI passes.
-2. **Check before tagging**, on an up-to-date `main` with a clean tree:
+   request and merge it after CI passes (CI on `main` must have succeeded
+   for exactly the commit being tagged).
+2. **Check** (optional; `make publish` runs the same checks), on an
+   up-to-date `main` with a clean tree:
 
    ```sh
-   make preflight tag=vX.Y.Z
+   make publish-check vX.Y.Z
    ```
 
-   This checks that `git-parallel --version` prints `git-parallel vX.Y.Z`,
-   then runs `hephaestus preflight --tag vX.Y.Z --strict` (read-only:
-   repository state, configuration, workflow, environment, secret names,
-   tap). It needs a GitHub token that can read the repository (for example
-   `GITHUB_TOKEN="$(gh auth token)"`). `make release-check tag=vX.Y.Z` also
-   runs the tests and a local snapshot.
-3. **Push the tag:**
+   It first checks that `git-parallel --version` prints
+   `git-parallel vX.Y.Z` (`scripts/check-version.sh`), then runs the
+   Hephaestus publish preflight: branch, clean and pushed tree, tag not yet
+   used, CI on the commit, release workflow, rulesets, environment, secret
+   names, the tap, and `hephaestus preflight --strict`. Read-only, apart
+   from a fetch of `origin/main`. It reports both and fails if either fails.
+3. **Publish:**
 
    ```sh
-   git tag vX.Y.Z
-   git push origin vX.Y.Z
+   make publish vX.Y.Z              # or VERSION=vX.Y.Z, or tag=vX.Y.Z
+   make publish vX.Y.Z YES=1        # without the confirmation prompt
    ```
 
+   The version check runs first, so a tag that the release workflow would
+   refuse is never pushed. Then the preflight, a confirmation (default No),
+   one annotated tag pushed to `origin`, and the release run is followed
+   and verified: assets, attestations, release notes and, for a stable
+   version, the tap pull request.
 4. **The workflow** runs the full CI on the tagged commit, then
    - `build` (read-only, no secrets): refuses a tag that differs from the
      script's version, archives, checksums and verifies `dist/`;
-   - `release` (environment `release`): rehearses the tap pull request
-     (dry run), attests the archive and checksum file, publishes the GitHub
-     release (notes generated by GitHub), then opens the tap pull request.
-     Prereleases (`vX.Y.Z-rc.N`) are released but do not update the tap.
+   - `release` (environment `release`): plans the release (`prerelease`,
+     `tap`), rehearses the tap pull request (dry run), attests the archive
+     and checksum file, publishes the GitHub release (notes generated by
+     GitHub), then opens the tap pull request. For a prerelease
+     (`vX.Y.Z-rc.N`) the plan says `tap=skip`: the release is published as a
+     prerelease, both tap steps are skipped and never receive the tap token.
 5. **Review and merge the tap pull request** ("Brew formula update for
-   git-parallel version vX.Y.Z"). The first one adds `git-parallel.rb`;
-   after it is merged:
+   git-parallel version vX.Y.Z"). `make publish` verifies it but never
+   merges it. The first one adds `git-parallel.rb`; after it is merged:
 
    ```sh
    brew install magicdrive/tap/git-parallel
    ```
 
+| Command | What it does |
+| --- | --- |
+| `make publish vX.Y.Z` | version check, preflight, confirm, tag, push, follow, verify |
+| `make publish-check vX.Y.Z` | version check and preflight only |
+| `make publish-status vX.Y.Z` | what exists for a version: tag, run, release, verification (read-only) |
+| `make publish-watch vX.Y.Z` | find and follow the release run of an already pushed tag, then verify |
+| `make publish-help` | how publishing works and its safety rules |
+
+`make version-check tag=vX.Y.Z`, `make preflight tag=vX.Y.Z` (version check +
+`hephaestus preflight --strict`) and `make release-check tag=vX.Y.Z` (tests,
+configuration, snapshot, preflight) are still available as read-only
+checks. Before `make publish` existed, the tag was created and pushed by
+hand with `git tag` / `git push`; do not do that any more: `make publish`
+checks everything first and verifies the result.
+
 ## Local checks
 
 ```sh
-make check                    # shellcheck + tests (bash on PATH)
+make check                    # shellcheck + tests (bash on PATH) + make publish wiring
 make test TEST_BASH=/bin/bash # tests with macOS's bash 3.2
+make test-publish             # the publish targets with a stub tool (no git or GitHub)
 make hephaestus-check         # validate hephaestus.yaml
 make snapshot                 # dist/git-parallel_0.0.0-SNAPSHOT_noarch.tar.gz + checksum
 ```
@@ -80,8 +112,18 @@ prefer a container such as `homebrew/brew`.
 
 ## When something fails
 
-Nothing is ever fixed by moving or deleting a tag. Hephaestus resumes a
-release by running the same thing again (Hephaestus `docs/recovery.md`):
+Nothing is ever fixed by moving or deleting a tag. An interrupted
+`make publish` (Ctrl-C, network, timeout; exit status 3) stopped only the
+monitoring; the release keeps running on GitHub:
+
+```sh
+make publish-status vX.Y.Z    # tag, run, release, assets, attestations, tap
+make publish-watch vX.Y.Z     # find and follow the run again, then verify
+```
+
+Running `make publish` again for a version whose tag exists is refused.
+Hephaestus resumes a release by running the same thing again (Hephaestus
+`docs/recovery.md`):
 
 - **Before the release is published** (CI, `build`, the tap rehearsal or the
   attestation failed): nothing is public. Fix the cause; if the fix needs a
@@ -90,7 +132,7 @@ release by running the same thing again (Hephaestus `docs/recovery.md`):
   above) and re-run the failed jobs.
 - **Publishing stopped halfway**: re-run the failed `release` job. Identical
   assets are skipped, a draft is reused; an asset that differs is never
-  overwritten (`hephaestus status --tag vX.Y.Z` shows the state).
+  overwritten.
 - **The tap pull request failed after publishing**: re-run the failed
   `release` job (within the 7 days the `dist` artifact is kept): the release
   step finds everything already published and the tap step resumes; an
