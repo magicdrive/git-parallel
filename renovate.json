@@ -1,0 +1,42 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "group:allNonMajor"
+  ],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 10am on monday"],
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rebaseWhen": "behind-base-branch",
+  "minimumReleaseAge": "3 days",
+  "packageRules": [
+    {
+      "description": "GitHub Actions stay pinned to commit SHAs (magicdrive/hephaestus included)",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "pinDigests": true,
+      "automerge": false
+    },
+    {
+      "description": "Keep the Hephaestus CLI (Makefile) and the Hephaestus action (workflows) on the same release",
+      "matchPackageNames": ["github.com/magicdrive/hephaestus", "magicdrive/hephaestus"],
+      "groupName": "Hephaestus",
+      "automerge": false
+    }
+  ],
+  "customManagers": [
+    {
+      "description": "Tool versions pinned in the Makefile: a '# renovate: datasource=... depName=...' comment above 'NAME ?= version'",
+      "customType": "regex",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)\\n[A-Z_]+ \\?= (?<currentValue>\\S+)"
+      ]
+    }
+  ]
+}

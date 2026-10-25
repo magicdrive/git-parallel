@@ -52,6 +52,7 @@ export GIT_PARALLEL_DEAULT_MAXDEPTH="${GIT_PARALLEL_DEAULT_MAXDEPTH:-""}"
 export GIT_PARALLEL_DEAULT_START_DIR="${GIT_PARALLEL_DEAULT_START_DIR:-$(cd ./ && pwd)}"
 
 trap git::parallel::exit HUP INT QUIT TERM
+trap git::parallel::cleanup EXIT
 
 git::parallel::help() {
 cat << HELP >&2
@@ -82,24 +83,33 @@ HELP
 
 git::parallel::reccursive_ps_killer() {
     local target_ps=$1
-    for x in $(ps --ppid ${target_ps} --no-heading | awk '{ print $1 }'); do
+    local x
+    # pgrep -P works on both Linux (procps) and macOS; `ps --ppid` is
+    # GNU-only.
+    for x in $(pgrep -P "${target_ps}" 2>/dev/null); do
         git::parallel::reccursive_ps_killer "${x}"
     done
-    kill -9 ${target_ps}
+    kill -9 "${target_ps}" 2>/dev/null
 }
 
 git::parallel::find_targets() {
 
-    MAXDEPTH_OPT=""
+    local maxdepth_opt=()
     if [[ -n ${GIT_PARALLEL_DEAULT_MAXDEPTH} ]];then
-        MAXDEPTH_OPT="-maxdepth "${GIT_PARALLEL_DEAULT_MAXDEPTH}""
+        maxdepth_opt=(-maxdepth "${GIT_PARALLEL_DEAULT_MAXDEPTH}")
     fi
 
-    TARGET_REPOSITORIES=($(find -L "${GIT_PARALLEL_DEAULT_START_DIR}" \
-            ${MAXDEPTH_OPT} -name '.git' -type d | \
-            perl -p -e "s{^\./}{}" | \
-            perl -p -e "s{/\.git$}{}" | \
-            grep -v "^$"))
+    # One repository per line, so that paths containing spaces stay intact.
+    TARGET_REPOSITORIES=()
+    local line
+    while IFS= read -r line; do
+        line="${line#./}"
+        line="${line%/.git}"
+        if [[ -n ${line} ]];then
+            TARGET_REPOSITORIES+=("${line}")
+        fi
+    done < <(find -L "${GIT_PARALLEL_DEAULT_START_DIR}" \
+            ${maxdepth_opt[@]+"${maxdepth_opt[@]}"} -name '.git' -type d)
 }
 
 git::parallel::command() {
@@ -140,30 +150,37 @@ git::parallel::version() {
 
 git::parallel::freeze() {
     local repo="$1"
-    if [ -d ${repo}/.git ];then
-        touch ${repo}/.git-parallel.freeze
-        echo ${repo} now frozen.
+    if [ -d "${repo}/.git" ];then
+        touch "${repo}/.git-parallel.freeze"
+        echo "${repo} now frozen."
     else
-        echo ${repo} is not git-repository. >&2
+        echo "${repo} is not git-repository." >&2
     fi
 }
 
+git::parallel::cleanup() {
+    if [[ -n ${GIT_PARALLEL_TMPDIR} && -d ${GIT_PARALLEL_TMPDIR} ]];then
+        rm -rf "${GIT_PARALLEL_TMPDIR}"
+    fi
+}
 
 git::parallel::exit() {
+    git::parallel::cleanup
     git::parallel::reccursive_ps_killer $$
 }
 
 git::parallel::show_list() {
     git::parallel::find_targets
-    for x in ${TARGET_REPOSITORIES[@]};do
+    local x
+    for x in "${TARGET_REPOSITORIES[@]}";do
         echo "${x}"
     done
 }
 
 git::parallel::execute() {
     local repository=$1
-    local repository_name=$(basename ${repository})
-    local git_command="${GIT_PARALLEL_EXEC_CMD}"
+    local repository_name
+    repository_name=$(basename "${repository}")
 
     [ -d "${repository}/.git" ] || return;
 
@@ -181,20 +198,24 @@ git::parallel::execute() {
         print_repo_name="${repository_name}"
     fi
 
-    cd ${repository}
+    cd "${repository}" || return
     echo -e "${print_cmd} ::: ${print_repo_name}"
 
     if [ -f "${repository}/.git-parallel.freeze" ];then
         echo skip.
         echo .git-parallel.freeze found.
-        echo ${repository} is frozen.
+        echo "${repository} is frozen."
         echo
         return
     fi
 
+    # GIT_COLOR_CONFIG and CMD are split into words on purpose: the command
+    # is given as one string (see git::parallel::command).
     if [[ $CMD_MODE = git ]];then
-        git -C ${repository} ${GIT_COLOR_CONFIG} ${CMD} 2>&1
+        # shellcheck disable=SC2086
+        git -C "${repository}" ${GIT_COLOR_CONFIG} ${CMD} 2>&1
     elif [[ $CMD_MODE = bare ]];then
+        # shellcheck disable=SC2086
         ${CMD} 2>&1
     fi
     echo
@@ -204,17 +225,30 @@ git::parallel::job_pack() {
     local repo=${TARGET_REPOSITORIES[0]}
     TARGET_REPOSITORIES=("${TARGET_REPOSITORIES[@]:1}")
     if [[ -d ${repo} ]];then
-        exec {FD}< <(git::parallel::execute "${repo}")
-        FD_LIST=(${FD_LIST[@]} ${FD})
+        # Each job writes to its own file, printed in order once the batch
+        # has finished. (Named file descriptors, `exec {FD}<`, need bash 4.1
+        # and fail on the bash 3.2 that ships with macOS.)
+        local out="${GIT_PARALLEL_TMPDIR}/${#OUT_LIST[@]}"
+        git::parallel::execute "${repo}" > "${out}" &
+        OUT_LIST+=("${out}")
     fi
 }
 
 git::parallel::main() {
-    FD_LIST=()
+    local x
+
+    # `seq 0` prints nothing with GNU coreutils, so zero jobs used to loop
+    # forever.
+    if [[ ! ${GIT_PARALLEL_DEAULT_JOBS} =~ ^[[:digit:]]+$ ]] || (( 10#${GIT_PARALLEL_DEAULT_JOBS} < 1 ));then
+        echo "Invalid job count: ${GIT_PARALLEL_DEAULT_JOBS} (must be at least 1)" >&2
+        exit 1
+    fi
 
     git::parallel::command
     git::parallel::color
     git::parallel::find_targets
+
+    GIT_PARALLEL_TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/git-parallel.XXXXXX") || exit 1
 
     if [[ ${GIT_PARALLEL_DEAULT_SILENT_MODE} = FALSE ]];then
         echo "start parallel: ${GIT_PARALLEL_EXEC_CMD} ";
@@ -222,33 +256,31 @@ git::parallel::main() {
     fi
 
     while true; do
+        OUT_LIST=()
         for x in $(seq "${GIT_PARALLEL_DEAULT_JOBS}"); do
             git::parallel::job_pack
         done
         wait
 
-        if [[ ${GIT_PARALLEL_DEAULT_SILENT_MODE} = TRUE ]];then
-            for x in ${FD_LIST[@]}; do
-                : <&${x}
-            done
-        else
-            for x in ${FD_LIST[@]}; do
-                cat <&${x}
-            done
-        fi
+        for x in "${OUT_LIST[@]}"; do
+            if [[ ${GIT_PARALLEL_DEAULT_SILENT_MODE} != TRUE ]];then
+                cat "${x}"
+            fi
+            rm -f "${x}"
+        done
 
-        if [[ -z ${TARGET_REPOSITORIES} ]];then
+        if [[ ${#TARGET_REPOSITORIES[@]} -eq 0 ]];then
             break
         fi
     done
 }
 
-if [[ -z $@ ]];then
+if [[ -z $* ]];then
     git::parallel::help && exit 1
 fi
 
-if [[ ! $1 =~ ^-+.*$ ]] || [[ $@ =~ ^-[[:blank:]]+.*$ ]];then
-    echo "Unknown option $@" >&2
+if [[ ! $1 =~ ^-+.*$ ]] || [[ $* =~ ^-[[:blank:]]+.*$ ]];then
+    echo "Unknown option $*" >&2
     exit 1
 fi
 
@@ -267,11 +299,11 @@ while getopts "$optspec" optchar; do
                     git::parallel::show_list && exit 1
                     ;;
                 freeze)
-                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    val="${!OPTIND}"; OPTIND=$(( OPTIND + 1 ))
                     git::parallel::freeze "${val}" && exit 1
                     ;;
                 jobs)
-                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    val="${!OPTIND}"; OPTIND=$(( OPTIND + 1 ))
                     if [[ ${val} =~ ^[[:digit:]]+$ ]]; then
                         GIT_PARALLEL_DEAULT_JOBS="${val}"
                     else
@@ -280,7 +312,7 @@ while getopts "$optspec" optchar; do
                     fi
                     ;;
                 color)
-                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    val="${!OPTIND}"; OPTIND=$(( OPTIND + 1 ))
                     if [[ ${val} =~ ^(auto|always|never)$ ]]; then
                         GIT_PARALLEL_DEAULT_COLOR_MODE="${val}"
                     else
@@ -289,7 +321,7 @@ while getopts "$optspec" optchar; do
                     fi
                     ;;
                 maxdepth)
-                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                    val="${!OPTIND}"; OPTIND=$(( OPTIND + 1 ))
                     if [[ ${val} =~ ^[[:digit:]]+$ ]]; then
                         GIT_PARALLEL_DEAULT_MAXDEPTH="${val}"
                     else
@@ -297,8 +329,8 @@ while getopts "$optspec" optchar; do
                         exit 1
                     fi
                     ;;
-                target)
-                    val="${!OPTIND}"; OPTIND=$(( $OPTIND + 1 ))
+                target|targets)
+                    val="${!OPTIND}"; OPTIND=$(( OPTIND + 1 ))
                     GIT_PARALLEL_DEAULT_START_DIR="${val}"
                     ;;
                 silent)
@@ -368,7 +400,7 @@ done
 
 shift $((OPTIND - 1))
 
-GIT_PARALLEL_EXEC_CMD=$@
+GIT_PARALLEL_EXEC_CMD=$*
 
 if [[ -z ${GIT_PARALLEL_EXEC_CMD} ]];then
     git::parallel::help && exit 1

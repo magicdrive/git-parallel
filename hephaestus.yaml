@@ -1,0 +1,73 @@
+# Release configuration for Hephaestus (https://github.com/magicdrive/hephaestus).
+#
+# git-parallel is one Bash script and its man page, so there is no build
+# stage: a single architecture-independent ("noarch") archive serves every
+# platform, and the Homebrew formula installs it on macOS and Linux, Intel
+# and ARM, from one url.
+#
+#   make snapshot                 # archive + checksum locally, no tag needed
+#   make publish-check vX.Y.Z     # version check + release preflight (read-only)
+#   make publish vX.Y.Z           # checks, then tags, pushes, follows, verifies
+#
+# The release workflow (.github/workflows/release.yml) runs on a v* tag
+# after CI passes and is the only publisher. See docs/development/releasing.md.
+version: 1
+
+project:
+  name: git-parallel
+  description: Run commands in parallel across multiple git repositories
+  homepage: https://github.com/magicdrive/git-parallel
+  license: MIT
+
+archives:
+  - id: script
+    name: "{{ .Project }}_{{ .Version }}_noarch"
+    targets: [{os: all, arch: all}]
+    files:
+      - {src: git-parallel, dst: git-parallel, mode: "0755"}
+      - {src: git-parallel.1, dst: git-parallel.1, mode: "0644"}
+      - {src: README.md, dst: README.md, mode: "0644"}
+
+checksum:
+  name: "{{ .Project }}_{{ .Version }}_checksums.txt"
+
+release:
+  github:
+    owner: magicdrive
+    name: git-parallel
+    # The repository has no changelog; GitHub writes the notes when the
+    # release is created.
+    generate_notes: true
+
+brews:
+  - name: git-parallel
+    ids: [script]
+    commit_msg_template: "Brew formula update for {{ .ProjectName }} version {{ .Tag }}"
+    # magicdrive/homebrew-tap keeps its formulae at the repository root;
+    # creating Formula/ there would hide them from Homebrew.
+    # Prereleases (v1.2.3-rc.1) never update the tap.
+    skip_upload: auto
+    # No depends_on: the script runs on the bash 3.2 that ships with macOS
+    # and on any later bash (CI checks both), and as a git subcommand it is
+    # only useful where git is already installed.
+    install: |
+      bin.install "git-parallel"
+      man1.install "git-parallel.1"
+    # --version, --help and --list exit 1 (historical behavior).
+    test: |
+      assert_match "git-parallel v#{version}", shell_output("#{bin}/git-parallel --version", 1)
+      system "git", "init", "--quiet", "repo"
+      assert_match %r{/repo$}, shell_output("#{bin}/git-parallel --list", 1)
+      assert_match "result git status ::: repo", shell_output("#{bin}/git-parallel -- status")
+    repository:
+      owner: magicdrive
+      name: homebrew-tap
+      pull_request:
+        enabled: true
+
+# Release safety checks before a tag is pushed: make publish-check vX.Y.Z
+# runs them (hephaestus preflight --strict, see the Hephaestus
+# docs/preflight.md); make preflight tag=vX.Y.Z runs them alone.
+preflight:
+  workflow: release.yml
+  environment: release

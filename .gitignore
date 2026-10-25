@@ -62,3 +62,7 @@ Network Trash Folder
 Temporary Items
 .apdisk
 
+
+### Hephaestus
+# Release artifacts (make snapshot, the release workflow)
+/dist/

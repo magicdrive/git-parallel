@@ -1,0 +1,194 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  # The release workflow runs this whole CI on the tagged commit first.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Called from release.yml, github.workflow is "Release": the group differs
+  # from the release workflow's own, so the call never cancels itself.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # No go.mod here: Go only runs a pinned tool (actionlint).
+          go-version: stable
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - name: ShellCheck
+        run: shellcheck --version && make lint
+      - name: actionlint
+        run: make actionlint
+      - name: Renovate configuration
+        run: make renovate-check
+
+  test:
+    # Behavior tests (tests/run.sh) with every bash git-parallel supports:
+    # bash 5 on Linux and macOS, and the bash 3.2 that ships with macOS.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: ubuntu-latest, bash: bash, major: "5"}
+          - {os: ubuntu-24.04-arm, bash: bash, major: "5"}
+          - {os: macos-latest, bash: /bin/bash, major: "3"}
+          - {os: macos-latest, bash: homebrew, major: "5"}
+    name: test (${{ matrix.os }}, bash ${{ matrix.major }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Select bash
+        id: bash
+        env:
+          WANT: ${{ matrix.bash }}
+          MAJOR: ${{ matrix.major }}
+        run: |
+          set -euo pipefail
+          if [[ "$WANT" == homebrew ]]; then
+            WANT="$(brew --prefix)/bin/bash"
+            if [[ ! -x "$WANT" ]]; then
+              HOMEBREW_NO_AUTO_UPDATE=1 brew install bash
+            fi
+          fi
+          "$WANT" --version | head -1
+          # shellcheck disable=SC2016 # expanded by the bash under test
+          got="$("$WANT" -c 'echo "${BASH_VERSINFO[0]}"')"
+          [[ "$got" == "$MAJOR" ]] || { echo "::error::$WANT is bash $got, expected $MAJOR"; exit 1; }
+          echo "path=$WANT" >> "$GITHUB_OUTPUT"
+      - name: Tests
+        env:
+          TEST_BASH: ${{ steps.bash.outputs.path }}
+        run: make test TEST_BASH="$TEST_BASH"
+      - name: make publish wiring
+        # The publish targets with a stub in place of hephaestus: no git or
+        # GitHub access. GNU Make 4 on Linux, 3.81 on macOS.
+        run: make test-publish
+      - name: Smoke (--version / --help)
+        env:
+          TEST_BASH: ${{ steps.bash.outputs.path }}
+        run: |
+          # The default shell runs with -e; --version and --help exit 1
+          # (historical behavior), so check their status explicitly.
+          set +e -u
+          out="$("$TEST_BASH" ./git-parallel --version)"; rc=$?
+          echo "$out"
+          [[ $rc == 1 && "$out" =~ ^git-parallel\ v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          help="$("$TEST_BASH" ./git-parallel --help 2>&1)"; rc=$?
+          [[ $rc == 1 && "$help" == USAGE:* ]] || exit 1
+
+  hephaestus:
+    # The release packaging, as the release workflow runs it, without a tag
+    # or any token: configuration check, release plan, then archive and
+    # checksum. No Go: the action runs its verified release binary.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check configuration
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
+        with:
+          command: check
+          github-token: ""
+      - name: Plan a release candidate
+        id: plan-rc
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
+        with:
+          command: plan
+          tag: v0.0.0-rc.1
+      - name: Plan a stable release
+        id: plan-stable
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
+        with:
+          command: plan
+          tag: v0.0.0
+      - name: A release candidate never updates the tap
+        env:
+          RC: ${{ steps.plan-rc.outputs.prerelease }}/${{ steps.plan-rc.outputs.tap }}
+          STABLE: ${{ steps.plan-stable.outputs.prerelease }}/${{ steps.plan-stable.outputs.tap }}
+        run: |
+          echo "rc: $RC, stable: $STABLE"
+          [[ "$RC" == true/skip && "$STABLE" == false/publish ]]
+      - name: Snapshot (archive, checksum)
+        id: snapshot
+        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
+        with:
+          command: run
+          stages: archive,checksum
+          snapshot: "true"
+          fresh: "true"
+          github-token: ""
+      - name: Verify the archive
+        env:
+          ARTIFACTS: ${{ steps.snapshot.outputs.artifacts }}
+        run: |
+          set -euo pipefail
+          echo "$ARTIFACTS" | jq .
+          echo "$ARTIFACTS" | jq -e 'length == 2'
+          archive=dist/git-parallel_0.0.0-SNAPSHOT_noarch.tar.gz
+          tar -tzvf "$archive"
+          [[ "$(tar -tzf "$archive" | sort | tr '\n' ' ')" == "README.md git-parallel git-parallel.1 " ]]
+          tar -tzvf "$archive" | grep -Eq '^-rwxr-xr-x .* git-parallel$'
+          (cd dist && sha256sum -c git-parallel_0.0.0-SNAPSHOT_checksums.txt)
+          # The archived script is the checked-out one.
+          tar -xzOf "$archive" git-parallel | cmp - git-parallel
+
+  homebrew-e2e:
+    # Archive → formula (file:// url) → brew style, audit --strict,
+    # install, test, git parallel, uninstall with the real Homebrew.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # make homebrew-e2e installs the hephaestus CLI with go install.
+          go-version: stable
+          cache: false
+      - name: Put Homebrew on PATH (Linux)
+        if: runner.os == 'Linux'
+        run: echo "/home/linuxbrew/.linuxbrew/bin" >> "$GITHUB_PATH"
+      - name: Homebrew end-to-end
+        run: make homebrew-e2e
+
+  ci-gate:
+    # One check that covers every job; the release workflow needs it too.
+    if: always()
+    needs: [lint, test, hephaestus, homebrew-e2e]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "$RESULTS"
+          for r in $RESULTS; do [[ "$r" == success ]] || exit 1; done
