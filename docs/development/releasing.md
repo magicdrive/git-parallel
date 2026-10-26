@@ -28,7 +28,7 @@ only, never values).
 | Ruleset on tags `refs/tags/v*` | Active; forbids **deletion** and **update** of tags (not creation) |
 | Environment `release` | Deployment branches and tags: selected policies, **tags `v*` only**, no branch policy. A branch policy `v*` fails the check: a branch named like a version could read the release secret |
 | Secret in `release` | `HOMEBREW_TAP_GITHUB_TOKEN`: a fine-grained token (or GitHub App token) with `contents: write` and `pull-requests: write` on `magicdrive/homebrew-tap` only. Only stable releases receive it |
-| Locally | `git`, an authenticated `gh` (`gh auth status`), Go (the Makefile runs `go run github.com/magicdrive/hephaestus@$(HEPHAESTUS_VERSION)`; `HEPHAESTUS=/path/to/hephaestus` uses an installed v1.2.0 or later instead), GNU Make 3.81 or later |
+| Locally | `git`, an authenticated `gh` (`gh auth status`), Go (the Makefile runs `go run github.com/magicdrive/hephaestus@$(HEPHAESTUS_VERSION)`; `HEPHAESTUS=/path/to/hephaestus` uses an installed v1.3.0 or later instead), GNU Make 3.81 or later |
 
 ## Steps
 
