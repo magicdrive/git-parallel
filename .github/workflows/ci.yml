@@ -108,19 +108,19 @@ jobs:
         with:
           persist-credentials: false
       - name: Check configuration
-        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
+        uses: magicdrive/hephaestus@e544acf59c79cbafa04a48002b0f30f91a02f8ba # v1.3.0
         with:
           command: check
           github-token: ""
       - name: Plan a release candidate
         id: plan-rc
-        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
+        uses: magicdrive/hephaestus@e544acf59c79cbafa04a48002b0f30f91a02f8ba # v1.3.0
         with:
           command: plan
           tag: v0.0.0-rc.1
       - name: Plan a stable release
         id: plan-stable
-        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
+        uses: magicdrive/hephaestus@e544acf59c79cbafa04a48002b0f30f91a02f8ba # v1.3.0
         with:
           command: plan
           tag: v0.0.0
@@ -133,7 +133,7 @@ jobs:
           [[ "$RC" == true/skip && "$STABLE" == false/publish ]]
       - name: Snapshot (archive, checksum)
         id: snapshot
-        uses: magicdrive/hephaestus@160990d32bbc83af702bde8a63f49ffcac32972c # v1.2.0
+        uses: magicdrive/hephaestus@e544acf59c79cbafa04a48002b0f30f91a02f8ba # v1.3.0
         with:
           command: run
           stages: archive,checksum
