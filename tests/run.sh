@@ -420,6 +420,163 @@ test_interrupt() {
   [[ -z "$(ls -A "${tmp}")" ]] || fail "${current}: temporary files left: $(ls -A "${tmp}")"
 }
 
+# --strict (opt-in): the exit status reports failures in the repositories.
+# Every job is waited for by its PID and its status is collected.
+
+# exit_code_tree NAME CODE...: repositories r1..rN whose `code` file holds the
+# status that ${work}/exit-code.sh exits with there.
+exit_code_tree() {
+  local name="$1" i=1 c repos=()
+  shift
+  for c in "$@"; do repos+=("r${i}"); i=$((i + 1)); done
+  new_tree "${name}" "${repos[@]}"
+  i=1
+  for c in "$@"; do echo "${c}" > "${tree}/r${i}/code"; i=$((i + 1)); done
+  cat > "${work}/exit-code.sh" <<'SH'
+#!/bin/sh
+exit "$(cat code)"
+SH
+}
+
+test_strict_success() {
+  new_tree strict-ok r1 r2 r3
+  run "${tree}" --strict -- ::: cat name.txt
+  expect_rc 0
+  expect_out "::: r1"
+  expect_out "::: r3"
+  expect_eq "${err}" ""
+  run "${tree}" --strict -j 1 -- log --format=%s
+  expect_rc 0
+  expect_out "init r2"
+}
+
+test_strict_partial_failure() {
+  new_tree strict-partial good1 bad good2
+  rm -f "${tree}/bad/name.txt"
+  local j
+  # One batch (--jobs 3), batches of two (--jobs 2) and one job at a time:
+  # the failure is found whichever batch and position it is in.
+  for j in 3 2 1; do
+    run "${tree}" --strict --jobs "${j}" -- ::: cat name.txt
+    expect_rc 1
+    # Every repository still ran; the output is the same as without --strict.
+    expect_out "::: good1"
+    expect_out "::: good2"
+    expect_out "name.txt: No such file or directory"
+    expect_err "git-parallel: the command failed in 1 of 3 repositories:"
+    expect_err "  ${tree}/bad (exit 1)"
+    [[ "${err}" != *good* ]] || fail "${current}: a succeeded repository is listed as failed (--jobs ${j})"
+  done
+  # Without --strict nothing changes: exit 0 and no summary.
+  run "${tree}" --jobs 2 -- ::: cat name.txt
+  expect_rc 0
+  expect_eq "${err}" ""
+}
+
+test_strict_all_fail_and_statuses() {
+  new_tree strict-all r1 r2
+  run "${tree}" --strict -- rev-parse --verify no-such-ref
+  expect_rc 1
+  expect_out "fatal: Needed a single revision"
+  expect_err "failed in 2 of 2 repositories:"
+  expect_err "  ${tree}/r1 (exit 128)"
+  expect_err "  ${tree}/r2 (exit 128)"
+  # A command that is not found fails with 127.
+  run "${tree}" --strict -- ::: git-parallel-no-such-command
+  expect_rc 1
+  expect_err "  ${tree}/r1 (exit 127)"
+  # Each repository's own status is reported, not only the first or last.
+  exit_code_tree strict-codes 0 3 0 42 0
+  run "${tree}" --strict --jobs 2 -- ::: sh "${work}/exit-code.sh"
+  expect_rc 1
+  expect_err "failed in 2 of 5 repositories:"
+  expect_err "  ${tree}/r2 (exit 3)"
+  expect_err "  ${tree}/r4 (exit 42)"
+  [[ "${err}" != *"/r1 "* && "${err}" != *"/r3 "* && "${err}" != *"/r5 "* ]] \
+    || fail "${current}: a succeeded repository is listed as failed"
+  # The last job of the last batch failing is not lost either.
+  exit_code_tree strict-last 0 0 5
+  run "${tree}" --strict --jobs 3 -- ::: sh "${work}/exit-code.sh"
+  expect_rc 1
+  expect_err "  ${tree}/r3 (exit 5)"
+}
+
+test_strict_frozen_and_silent() {
+  new_tree strict-frozen hot cold
+  rm -f "${tree}/hot/name.txt"
+  run "${tree}" --freeze "${tree}/cold"
+  # A frozen repository is skipped and counts as succeeded.
+  run "${tree}" --strict -- ::: cat "${tree}/cold/name.txt"
+  expect_rc 0
+  expect_out "${tree}/cold is frozen."
+  run "${tree}" --strict -- ::: cat name.txt
+  expect_rc 1
+  expect_err "failed in 1 of 2 repositories:"
+  expect_err "  ${tree}/hot (exit 1)"
+  [[ "${err}" != *"/cold "* ]] || fail "${current}: the frozen repository is listed as failed"
+  # --silent hides the output of the repositories, not the failure summary.
+  run "${tree}" --silent --strict -- ::: cat name.txt
+  expect_rc 1
+  expect_eq "${out}" ""
+  expect_err "  ${tree}/hot (exit 1)"
+  run "${tree}" -q --strict -- ::: cat "${tree}/cold/name.txt"
+  expect_rc 0
+  expect_eq "${out}" ""
+  expect_eq "${err}" ""
+}
+
+test_strict_no_repositories() {
+  mkdir -p "${work}/strict-empty"
+  run "${work}/strict-empty" --strict -- status
+  expect_rc 0
+  expect_eq "${err}" ""
+}
+
+# strict_signal SIGNAL STATUS: --strict exits with STATUS (128 + the signal
+# number) on SIGNAL, kills the running commands and removes its temporary
+# files.
+strict_signal() {
+  local sig="$1" want="$2"
+  new_tree "strict-${sig}" r1 r2
+  local tmp="${work}/tmp-strict-${sig}" marker="git-parallel-test-strict-${sig}-$$" pattern
+  mkdir -p "${tmp}"
+  ln -sf "$(command -v sleep)" "${work}/${marker}"
+  pattern="^${work}/${marker} 30"
+  # Job control gives the background job its own process group and keeps
+  # SIGINT from being ignored in it (a non-interactive shell starts
+  # background commands with SIGINT ignored, and bash cannot trap a signal
+  # that was ignored when it started).
+  set -m
+  (cd "${tree}" && TMPDIR="${tmp}" exec "${TEST_BASH}" "${GP}" --strict -j 2 -q -- ::: "${work}/${marker}" 30) 2>"${work}/strict-${sig}.stderr" &
+  local pid=$! i=0 status
+  set +m
+  while [[ -z "$(pgrep -f "${pattern}" || true)" && ${i} -lt 50 ]]; do sleep 0.1; i=$((i + 1)); done
+  [[ -n "$(pgrep -f "${pattern}" || true)" ]] || { fail "${current}: commands did not start"; kill "${pid}" 2>/dev/null; return; }
+  kill "-${sig}" "${pid}"
+  wait "${pid}" 2>/dev/null
+  status=$?
+  rc="${status}"
+  expect_rc "${want}"
+  err="$(cat "${work}/strict-${sig}.stderr")"
+  expect_err "git-parallel: interrupted by SIG${sig}"
+  i=0
+  while [[ -n "$(pgrep -f "${pattern}" || true)" && ${i} -lt 50 ]]; do sleep 0.1; i=$((i + 1)); done
+  if [[ -n "$(pgrep -f "${pattern}" || true)" ]]; then
+    pkill -f "${pattern}" 2>/dev/null
+    fail "${current}: commands still running after ${sig}"
+  fi
+  [[ -z "$(ls -A "${tmp}")" ]] || fail "${current}: temporary files left: $(ls -A "${tmp}")"
+}
+
+test_strict_sigterm() { strict_signal TERM 143; }
+test_strict_sigint() { strict_signal INT 130; }
+
+test_strict_help() {
+  run "${work}" --help
+  expect_err "--strict"
+  expect_err "EXIT STATUS:"
+}
+
 # shellcheck disable=SC2016
 echo "git-parallel tests with $("${TEST_BASH}" -c 'echo "bash ${BASH_VERSION}"') (${TEST_BASH}), $(git --version)"
 
@@ -443,6 +600,14 @@ t "no repositories" test_empty_tree
 t "git parallel (git subcommand)" test_git_subcommand
 t "temporary files are removed" test_no_temp_files_left
 t "TERM stops running commands" test_interrupt
+t "--strict: all succeed" test_strict_success
+t "--strict: partial failure" test_strict_partial_failure
+t "--strict: all fail, per-repository statuses" test_strict_all_fail_and_statuses
+t "--strict: frozen repositories and --silent" test_strict_frozen_and_silent
+t "--strict: no repositories" test_strict_no_repositories
+t "--strict: SIGTERM" test_strict_sigterm
+t "--strict: SIGINT" test_strict_sigint
+t "--strict in --help" test_strict_help
 
 echo
 echo "${passed} passed, ${failed} failed"

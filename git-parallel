@@ -19,6 +19,7 @@
 #   * [-v|--verbose]                        # Execute verbose. (default.)
 #   * [-d|--targets] target-derectory       # Specified target git-repositories
 #   * [-F|--freeze] repository-path         # Generate .git-parallel.freeze file.
+#   * [--strict]                            # Exit 1 if the command fails in any repository.
 #
 # Author
 #
@@ -51,7 +52,12 @@ export GIT_PARALLEL_DEAULT_JOBS="${GIT_PARALLEL_DEAULT_JOBS:-"2"}"
 export GIT_PARALLEL_DEAULT_MAXDEPTH="${GIT_PARALLEL_DEAULT_MAXDEPTH:-""}"
 export GIT_PARALLEL_DEAULT_START_DIR="${GIT_PARALLEL_DEAULT_START_DIR:-$(cd ./ && pwd)}"
 
-trap git::parallel::exit HUP INT QUIT TERM
+GIT_PARALLEL_STRICT="FALSE"
+
+trap git::parallel::on_hup HUP
+trap git::parallel::on_int INT
+trap git::parallel::on_quit QUIT
+trap git::parallel::on_term TERM
 trap git::parallel::cleanup EXIT
 
 git::parallel::help() {
@@ -72,12 +78,29 @@ OPTIONS:
   * [-v|--verbose]                          # Execute verbose. (default.)
   * [-d|--targets] target-derectory         # Specified target git-repositories
   * [-F|--freeze] repository-path           # Generate .git-parallel.freeze file.
+  * [--strict]                              # Exit 1 if the command fails in any repository.
+
+EXIT STATUS:
+
+  Without --strict the exit status is 0 even when the command fails in some
+  or all repositories (historical behavior).
+
+  With --strict every repository still runs; then:
+    0        the command succeeded in every repository (frozen ones count as
+             succeeded)
+    1        it failed in at least one repository; they are listed on stderr
+             with their exit status, even with --silent
+    129 130 131 143
+             git-parallel was stopped by SIGHUP, SIGINT, SIGQUIT or SIGTERM
+             (128 + signal number); running commands are killed
 
 ex)
 
     git parallel --color auto --jobs 2 --silent -- pull --rebase
 
     git parallel --maxdepth 3 --jobs 4 -- ::: ls -lha
+
+    git parallel --strict -- fetch --prune || echo "fetch failed somewhere"
 HELP
 }
 
@@ -164,8 +187,26 @@ git::parallel::cleanup() {
     fi
 }
 
+git::parallel::on_hup() { git::parallel::exit HUP 129; }
+git::parallel::on_int() { git::parallel::exit INT 130; }
+git::parallel::on_quit() { git::parallel::exit QUIT 131; }
+git::parallel::on_term() { git::parallel::exit TERM 143; }
+
+# git::parallel::exit SIGNAL STATUS: stops on SIGNAL (STATUS is 128 + its
+# number).
 git::parallel::exit() {
     git::parallel::cleanup
+    if [[ ${GIT_PARALLEL_STRICT} = TRUE ]];then
+        # Kill the running commands, then exit with 128 + the signal number
+        # so that the caller sees the interruption.
+        local x
+        for x in $(pgrep -P $$ 2>/dev/null); do
+            git::parallel::reccursive_ps_killer "${x}"
+        done
+        echo "git-parallel: interrupted by SIG$1" >&2
+        exit "$2"
+    fi
+    # Historical behavior: kill everything, git-parallel included.
     git::parallel::reccursive_ps_killer $$
 }
 
@@ -206,19 +247,24 @@ git::parallel::execute() {
         echo .git-parallel.freeze found.
         echo "${repository} is frozen."
         echo
-        return
+        return 0
     fi
 
     # GIT_COLOR_CONFIG and CMD are split into words on purpose: the command
     # is given as one string (see git::parallel::command).
+    local status=0
     if [[ $CMD_MODE = git ]];then
         # shellcheck disable=SC2086
         git -C "${repository}" ${GIT_COLOR_CONFIG} ${CMD} 2>&1
+        status=$?
     elif [[ $CMD_MODE = bare ]];then
         # shellcheck disable=SC2086
         ${CMD} 2>&1
+        status=$?
     fi
     echo
+    # The exit status of the job (see git::parallel::main).
+    return "${status}"
 }
 
 git::parallel::job_pack() {
@@ -230,6 +276,8 @@ git::parallel::job_pack() {
         # and fail on the bash 3.2 that ships with macOS.)
         local out="${GIT_PARALLEL_TMPDIR}/${#OUT_LIST[@]}"
         git::parallel::execute "${repo}" > "${out}" &
+        PID_LIST+=("$!")
+        REPO_LIST+=("${repo}")
         OUT_LIST+=("${out}")
     fi
 }
@@ -255,12 +303,24 @@ git::parallel::main() {
         echo;
     fi
 
+    local i status ran=0
+    local failed_repos=() failed_status=()
     while true; do
-        OUT_LIST=()
+        OUT_LIST=() PID_LIST=() REPO_LIST=()
         for x in $(seq "${GIT_PARALLEL_DEAULT_JOBS}"); do
             git::parallel::job_pack
         done
-        wait
+        # Each job is waited for by its PID, so that its exit status is
+        # known (a bare `wait` returns 0 whatever the jobs returned).
+        for i in "${!PID_LIST[@]}"; do
+            wait "${PID_LIST[$i]}"
+            status=$?
+            ran=$((ran + 1))
+            if (( status != 0 ));then
+                failed_repos+=("${REPO_LIST[$i]}")
+                failed_status+=("${status}")
+            fi
+        done
 
         for x in "${OUT_LIST[@]}"; do
             if [[ ${GIT_PARALLEL_DEAULT_SILENT_MODE} != TRUE ]];then
@@ -273,6 +333,17 @@ git::parallel::main() {
             break
         fi
     done
+
+    # Without --strict, failures do not change the exit status (historical
+    # behavior, kept for compatibility).
+    if [[ ${GIT_PARALLEL_STRICT} = TRUE && ${#failed_repos[@]} -gt 0 ]];then
+        echo "git-parallel: the command failed in ${#failed_repos[@]} of ${ran} repositories:" >&2
+        for i in "${!failed_repos[@]}"; do
+            echo "  ${failed_repos[$i]} (exit ${failed_status[$i]})" >&2
+        done
+        return 1
+    fi
+    return 0
 }
 
 if [[ -z $* ]];then
@@ -338,6 +409,9 @@ while getopts "$optspec" optchar; do
                     ;;
                 verbose)
                     GIT_PARALLEL_DEAULT_SILENT_MODE="FALSE"
+                    ;;
+                strict)
+                    GIT_PARALLEL_STRICT="TRUE"
                     ;;
                 *)
                     echo "Unknown option --${OPTARG}" >&2
@@ -406,5 +480,6 @@ if [[ -z ${GIT_PARALLEL_EXEC_CMD} ]];then
     git::parallel::help && exit 1
 fi
 
+# Without --strict main always returns 0; with it, 1 when a repository failed.
 git::parallel::main && exit 0
 
