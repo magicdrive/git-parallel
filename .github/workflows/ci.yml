@@ -30,13 +30,20 @@ jobs:
           # No go.mod here: Go only runs a pinned tool (actionlint).
           go-version: stable
           cache: false
+      # The Node.js Renovate's engines require (run.sh installs with
+      # --engine-strict). The npm cache holds only tarballs; `npm ci` checks
+      # each against the lockfile's integrity.
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: lts/*
+          node-version-file: .github/renovate-check/.node-version
+          cache: npm
+          cache-dependency-path: .github/renovate-check/package-lock.json
       - name: ShellCheck
         run: shellcheck --version && make lint
       - name: actionlint
         run: make actionlint
+      - name: Test the pinned Renovate install
+        run: make renovate-check-test
       - name: Renovate configuration
         run: make renovate-check
 
