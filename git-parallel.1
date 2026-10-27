@@ -25,12 +25,29 @@ OPTIONS:
   * [\-v|\-\-verbose]                          # Execute verbose. (default.)
   * [\-d|\-\-targets] target\-derectory         # Specified target git\-repositories
   * [\-F|\-\-freeze] repository\-path           # Generate .git\-parallel.freeze file.
+  * [\-\-strict]                              # Exit 1 if the command fails in any repository.
+
+EXIT STATUS:
+
+  Without \-\-strict the exit status is 0 even when the command fails in some
+  or all repositories (historical behavior).
+
+  With \-\-strict every repository still runs; then:
+    0        the command succeeded in every repository (frozen ones count as
+             succeeded)
+    1        it failed in at least one repository; they are listed on stderr
+             with their exit status, even with \-\-silent
+    129 130 131 143
+             git\-parallel was stopped by SIGHUP, SIGINT, SIGQUIT or SIGTERM
+             (128 + signal number); running commands are killed
 
 ex)
 
     git parallel \-\-color auto \-\-jobs 2 \-\-silent \-\- pull \-\-rebase
 
     git parallel \-\-maxdepth 3 \-\-jobs 4 \-\- ::: ls \-lha
+
+    git parallel \-\-strict \-\- fetch \-\-prune || echo "fetch failed somewhere"
 
 .fi
 .RE
