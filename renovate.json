@@ -14,7 +14,17 @@
   "prHourlyLimit": 2,
   "rebaseWhen": "behind-base-branch",
   "minimumReleaseAge": "3 days",
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 10am on monday"]
+  },
   "packageRules": [
+    {
+      "description": "The Renovate of make renovate-check (.github/renovate-check): package.json, its lockfile and the Node.js its engines require move together",
+      "matchFileNames": [".github/renovate-check/**"],
+      "groupName": "Renovate validator",
+      "automerge": false
+    },
     {
       "description": "GitHub Actions stay pinned to commit SHAs (magicdrive/hephaestus included)",
       "matchManagers": ["github-actions"],

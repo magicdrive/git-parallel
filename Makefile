@@ -22,18 +22,16 @@ uninstall:
 TEST_BASH ?= bash
 SHELLCHECK ?= shellcheck
 SHELL_SOURCES := git-parallel tests/run.sh tests/publish-make.sh scripts/check-version.sh \
-	scripts/homebrew-e2e.sh
+	scripts/homebrew-e2e.sh .github/renovate-check/run.sh
 
 # renovate: datasource=go depName=github.com/magicdrive/hephaestus
 HEPHAESTUS_VERSION ?= v1.3.0
 HEPHAESTUS ?= go run github.com/magicdrive/hephaestus@$(HEPHAESTUS_VERSION)
 # renovate: datasource=go depName=github.com/rhysd/actionlint
 ACTIONLINT_VERSION ?= v1.7.12
-# renovate: datasource=npm depName=renovate
-RENOVATE_VERSION ?= 44.149.0
 
 .PHONY: all install uninstall help lint test test-publish check actionlint \
-	renovate-check hephaestus-check snapshot version-check preflight release-check \
+	renovate-check renovate-check-test hephaestus-check snapshot version-check preflight release-check \
 	homebrew-e2e
 
 help:
@@ -43,7 +41,8 @@ help:
 	@echo "make test-publish           test the make publish wiring (no git or GitHub access)"
 	@echo "make check                  lint + test + test-publish"
 	@echo "make actionlint             lint the GitHub Actions workflows"
-	@echo "make renovate-check         validate renovate.json (needs npx)"
+	@echo "make renovate-check         validate renovate.json (Node.js of .github/renovate-check/.node-version)"
+	@echo "make renovate-check-test    test renovate-check's pinned install (fake registry)"
 	@echo "make hephaestus-check       validate hephaestus.yaml"
 	@echo "make snapshot               build the release archive and checksum into dist/ (no tag)"
 	@echo "make version-check tag=vX.Y.Z   the script's --version matches the tag"
@@ -70,8 +69,16 @@ check: lint test test-publish
 actionlint:
 	go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 
+# Renovate and its whole dependency tree are pinned by
+# .github/renovate-check/package-lock.json and installed with `npm ci`, which
+# Renovate updates (npm manager, lockFileMaintenance).
 renovate-check:
-	npx --yes --package renovate@$(RENOVATE_VERSION) -- renovate-config-validator --strict renovate.json
+	.github/renovate-check/run.sh
+
+# The failure-injection tests of renovate-check's install (a fake registry:
+# lockfile pinning, 404 and integrity failures)
+renovate-check-test:
+	python3 .github/renovate-check/test_run.py
 
 hephaestus-check:
 	$(HEPHAESTUS) check
