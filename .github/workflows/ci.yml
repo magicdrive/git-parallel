@@ -42,6 +42,12 @@ jobs:
         run: shellcheck --version && make lint
       - name: actionlint
         run: make actionlint
+      # The release workflow's tag provenance check (release.yml, job
+      # provenance), against local repositories: shellcheck and its tests.
+      - name: Release tag provenance check
+        run: |
+          shellcheck .github/release/verify-tag-provenance.sh .github/release/verify-tag-provenance_test.sh
+          .github/release/verify-tag-provenance_test.sh
       - name: Test the pinned Renovate install
         run: make renovate-check-test
       - name: Renovate configuration

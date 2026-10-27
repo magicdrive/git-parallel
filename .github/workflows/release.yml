@@ -12,6 +12,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # PROVENANCE: a tag's commit must be in the history of an allowed release
+  # branch (only main, the default branch): a v* tag pushed on any other
+  # commit (another branch, a commit on no branch) builds and publishes
+  # nothing. The script fetches the tag and the branch afresh, requires the
+  # tag to name this run's commit and fails closed on anything it cannot
+  # establish (.github/release/verify-tag-provenance.sh). To release from a
+  # maintenance branch, add its exact name after main.
+  provenance:
+    # Pinned: ubuntu-latest moves to 26.04 in November 2026 (actions/runner-images#14748);
+    # the release path changes its image only through a reviewed pull request.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code (full history)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify the tag is on an allowed release branch
+        run: .github/release/verify-tag-provenance.sh --ref "$GITHUB_REF" --sha "$GITHUB_SHA" main
+
   ci:
     # The full CI, at the tagged commit, is the release gate.
     uses: ./.github/workflows/ci.yml
@@ -19,6 +43,7 @@ jobs:
       contents: read
 
   build:
+    needs: [provenance]
     # Packages the release with a read-only token, no environment and no
     # secrets. git-parallel is a script: there is no build stage, only the
     # noarch archive and its checksum, and no toolchain: the action runs its
@@ -70,7 +95,7 @@ jobs:
     # must allow tags v* only (see docs/development/releasing.md). The tap
     # token reaches only the two tap steps, and only when the plan publishes
     # the tap: a prerelease (vX.Y.Z-rc.N) never receives it.
-    needs: [ci, build]
+    needs: [provenance, ci, build]
     # Pinned: ubuntu-latest moves to 26.04 in November 2026 (actions/runner-images#14748);
     # the release path changes its image only through a reviewed pull request.
     runs-on: ubuntu-24.04
