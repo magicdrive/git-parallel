@@ -23,7 +23,9 @@ jobs:
     # secrets. git-parallel is a script: there is no build stage, only the
     # noarch archive and its checksum, and no toolchain: the action runs its
     # verified release binary. Only the verified dist/ moves on.
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moves to 26.04 in November 2026 (actions/runner-images#14748);
+    # the release path changes its image only through a reviewed pull request.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -69,7 +71,9 @@ jobs:
     # token reaches only the two tap steps, and only when the plan publishes
     # the tap: a prerelease (vX.Y.Z-rc.N) never receives it.
     needs: [ci, build]
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest moves to 26.04 in November 2026 (actions/runner-images#14748);
+    # the release path changes its image only through a reviewed pull request.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment: release
     permissions:
