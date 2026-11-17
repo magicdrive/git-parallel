@@ -397,24 +397,69 @@ test_no_temp_files_left() {
   [[ -z "$(ls -A "${tmp}")" ]] || fail "${current}: temporary files left: $(ls -A "${tmp}")"
 }
 
+# Signal tests use a PID marker written by the command itself. This avoids
+# relying on pgrep -f, whose command-line matching varies across platforms.
+create_signal_test_command() {
+  cat > "${work}/signal-test-sleep.sh" <<'SH'
+#!/bin/sh
+printf '%s\n' "$$" > "$1/$(basename "$PWD").pid"
+exec sleep 30
+SH
+  chmod +x "${work}/signal-test-sleep.sh"
+}
+
+wait_for_signal_commands() {
+  local dir="$1" i=0
+  while [[ ${i} -lt 100 ]]; do
+    [[ -s "${dir}/r1.pid" && -s "${dir}/r2.pid" ]] && return 0
+    sleep 0.1
+    i=$((i + 1))
+  done
+  return 1
+}
+
+signal_process_running() {
+  local pid="$1" state
+  state="$(ps -p "${pid}" -o stat= 2>/dev/null)" || return 1
+  [[ -n "${state}" && "${state}" != Z* ]]
+}
+
+wait_for_signal_commands_stopped() {
+  local dir="$1" i=0 pid file running
+  while [[ ${i} -lt 100 ]]; do
+    running=0
+    for file in "${dir}"/*.pid; do
+      [[ -f "${file}" ]] || continue
+      read -r pid < "${file}"
+      if signal_process_running "${pid}"; then running=1; fi
+    done
+    [[ ${running} -eq 0 ]] && return 0
+    sleep 0.1
+    i=$((i + 1))
+  done
+  return 1
+}
+
 test_interrupt() {
   # TERM stops git-parallel and the commands it started, and removes its
   # temporary files.
   new_tree interrupt r1 r2
-  local tmp="${work}/tmp-int" marker="git-parallel-test-sleep-$$" pattern
-  mkdir -p "${tmp}"
-  ln -sf "$(command -v sleep)" "${work}/${marker}"
-  pattern="^${work}/${marker} 30"
-  (cd "${tree}" && TMPDIR="${tmp}" exec "${TEST_BASH}" "${GP}" -j 2 -q -- ::: "${work}/${marker}" 30) 2>"${work}/interrupt.stderr" &
-  local pid=$! i=0
-  while [[ -z "$(pgrep -f "${pattern}" || true)" && ${i} -lt 50 ]]; do sleep 0.1; i=$((i + 1)); done
-  [[ -n "$(pgrep -f "${pattern}" || true)" ]] || { fail "${current}: commands did not start"; kill "${pid}" 2>/dev/null; return; }
+  local tmp="${work}/tmp-int" started="${work}/started-int" pid
+  mkdir -p "${tmp}" "${started}"
+  create_signal_test_command
+  (cd "${tree}" && TMPDIR="${tmp}" exec "${TEST_BASH}" "${GP}" -j 2 -q -- ::: "${work}/signal-test-sleep.sh" "${started}") 2>"${work}/interrupt.stderr" &
+  pid=$!
+  if ! wait_for_signal_commands "${started}"; then
+    out=""; err="$(cat "${work}/interrupt.stderr")"; rc=1
+    fail "${current}: commands did not start"
+    kill -TERM "${pid}" 2>/dev/null || true
+    wait "${pid}" 2>/dev/null || true
+    return
+  fi
   kill -TERM "${pid}"
-  wait "${pid}" 2>/dev/null
-  i=0
-  while [[ -n "$(pgrep -f "${pattern}" || true)" && ${i} -lt 50 ]]; do sleep 0.1; i=$((i + 1)); done
-  if [[ -n "$(pgrep -f "${pattern}" || true)" ]]; then
-    pkill -f "${pattern}" 2>/dev/null
+  wait "${pid}" 2>/dev/null || true
+  if ! wait_for_signal_commands_stopped "${started}"; then
+    out=""; err="$(cat "${work}/interrupt.stderr")"; rc=1
     fail "${current}: commands still running after TERM"
   fi
   [[ -z "$(ls -A "${tmp}")" ]] || fail "${current}: temporary files left: $(ls -A "${tmp}")"
@@ -538,20 +583,21 @@ test_strict_no_repositories() {
 strict_signal() {
   local sig="$1" want="$2"
   new_tree "strict-${sig}" r1 r2
-  local tmp="${work}/tmp-strict-${sig}" marker="git-parallel-test-strict-${sig}-$$" pattern
-  mkdir -p "${tmp}"
-  ln -sf "$(command -v sleep)" "${work}/${marker}"
-  pattern="^${work}/${marker} 30"
-  # Job control gives the background job its own process group and keeps
-  # SIGINT from being ignored in it (a non-interactive shell starts
-  # background commands with SIGINT ignored, and bash cannot trap a signal
-  # that was ignored when it started).
+  local tmp="${work}/tmp-strict-${sig}" started="${work}/started-strict-${sig}" pid status
+  mkdir -p "${tmp}" "${started}"
+  create_signal_test_command
+  # Job control keeps SIGINT from being ignored by the background shell.
   set -m
-  (cd "${tree}" && TMPDIR="${tmp}" exec "${TEST_BASH}" "${GP}" --strict -j 2 -q -- ::: "${work}/${marker}" 30) 2>"${work}/strict-${sig}.stderr" &
-  local pid=$! i=0 status
+  (cd "${tree}" && TMPDIR="${tmp}" exec "${TEST_BASH}" "${GP}" --strict -j 2 -q -- ::: "${work}/signal-test-sleep.sh" "${started}") 2>"${work}/strict-${sig}.stderr" &
+  pid=$!
   set +m
-  while [[ -z "$(pgrep -f "${pattern}" || true)" && ${i} -lt 50 ]]; do sleep 0.1; i=$((i + 1)); done
-  [[ -n "$(pgrep -f "${pattern}" || true)" ]] || { fail "${current}: commands did not start"; kill "${pid}" 2>/dev/null; return; }
+  if ! wait_for_signal_commands "${started}"; then
+    out=""; err="$(cat "${work}/strict-${sig}.stderr")"; rc=1
+    fail "${current}: commands did not start"
+    kill -TERM "${pid}" 2>/dev/null || true
+    wait "${pid}" 2>/dev/null || true
+    return
+  fi
   kill "-${sig}" "${pid}"
   wait "${pid}" 2>/dev/null
   status=$?
@@ -559,10 +605,7 @@ strict_signal() {
   expect_rc "${want}"
   err="$(cat "${work}/strict-${sig}.stderr")"
   expect_err "git-parallel: interrupted by SIG${sig}"
-  i=0
-  while [[ -n "$(pgrep -f "${pattern}" || true)" && ${i} -lt 50 ]]; do sleep 0.1; i=$((i + 1)); done
-  if [[ -n "$(pgrep -f "${pattern}" || true)" ]]; then
-    pkill -f "${pattern}" 2>/dev/null
+  if ! wait_for_signal_commands_stopped "${started}"; then
     fail "${current}: commands still running after ${sig}"
   fi
   [[ -z "$(ls -A "${tmp}")" ]] || fail "${current}: temporary files left: $(ls -A "${tmp}")"
@@ -612,3 +655,4 @@ t "--strict in --help" test_strict_help
 echo
 echo "${passed} passed, ${failed} failed"
 [[ "${failed}" == 0 ]]
+

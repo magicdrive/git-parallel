@@ -173,7 +173,7 @@ git::parallel::version() {
 
 git::parallel::freeze() {
     local repo="$1"
-    if [ -d "${repo}/.git" ];then
+    if [ -d "${repo}/.git" ] || [ -f "${repo}/.git" ];then
         touch "${repo}/.git-parallel.freeze"
         echo "${repo} now frozen."
     else
