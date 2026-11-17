@@ -132,7 +132,7 @@ git::parallel::find_targets() {
             TARGET_REPOSITORIES+=("${line}")
         fi
     done < <(find -L "${GIT_PARALLEL_DEAULT_START_DIR}" \
-            ${maxdepth_opt[@]+"${maxdepth_opt[@]}"} -name '.git' -type d)
+            ${maxdepth_opt[@]+"${maxdepth_opt[@]}"} -name '.git' \( -type d -o -type f \) )
 }
 
 git::parallel::command() {
@@ -173,7 +173,7 @@ git::parallel::version() {
 
 git::parallel::freeze() {
     local repo="$1"
-    if [ -d "${repo}/.git" ];then
+    if [ -d "${repo}/.git" ] || [ -f "${repo}/.git" ];then
         touch "${repo}/.git-parallel.freeze"
         echo "${repo} now frozen."
     else
@@ -223,7 +223,7 @@ git::parallel::execute() {
     local repository_name
     repository_name=$(basename "${repository}")
 
-    [ -d "${repository}/.git" ] || return;
+    [ -d "${repository}/.git" ] || [ -f "${repository}/.git" ] || return;
 
     if [[ $GIT_PARALLEL_COLOR = TRUE ]];then
         GIT_COLOR_CONFIG="-c color.ui=always"
