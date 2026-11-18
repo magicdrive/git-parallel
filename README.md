@@ -16,14 +16,15 @@ USAGE:
 OPTIONS:
 
   * [-h|--help]                             # Show this help.
-  * [-j|--jobs] job-count                   # Execute in parallel with `job-count`
+  * [-j|--jobs] job-count                   # Execute in parallel with \`job-count\`
   * [-m|--maxdepth] depth-count             # Search target git-repositories in maxdepth.
   * [-V|--version]                          # Show git-parallel version info.
   * [-c|--color] auto|always|never          # Configure output color.
   * [-l|--list]                             # List up target git repositories.
   * [-q|--silent]                           # Execute silent. (no output)
   * [-v|--verbose]                          # Execute verbose. (default.)
-  * [-d|--targets] target-derectory         # Specified target git-repositories
+  * [-d|--targets] target-dir-name          # Specified target git-repositories
+  * [-e|--exclude] exclude-repo-name        # Specified target git-repositories
   * [-F|--freeze] repository-path           # Generate .git-parallel.freeze file.
   * [--strict]                              # Exit 1 if the command fails in any repository.
 
@@ -48,6 +49,8 @@ ex)
     git parallel --maxdepth 3 --jobs 4 -- ::: ls -lha
 
     git parallel --strict -- fetch --prune || echo "fetch failed somewhere"
+
+    git parallel --exclude hoge --list
 ```
 
 Exit status and `--strict`
@@ -114,7 +117,7 @@ Releases are made with [Hephaestus](https://github.com/magicdrive/hephaestus)
 
 Author
 
-Copyright (c) 2013 - 2024 Hiroshi IKEGAMI
+Copyright (c) 2013 - 2026 Hiroshi IKEGAMI
 
 MIT License
 

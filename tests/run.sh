@@ -177,6 +177,66 @@ test_targets() {
   expect_out "::: r2"
 }
 
+# --exclude matches repository basenames exactly. Repeated -e/--exclude
+# options accumulate; filtering applies to --list and executed commands.
+test_exclude() {
+  new_tree exclude alpha beta gamma "nested/beta" "with space"
+  local want
+
+  # Short option, long option, and exact-match semantics.
+  run "${tree}" -e alpha --list
+  expect_rc 1
+  expect_no_out "${tree}/alpha"
+  expect_out "${tree}/beta"
+  expect_out "${tree}/gamma"
+  expect_out "${tree}/nested/beta"
+
+  run "${tree}" --exclude beta --list
+  expect_rc 1
+  expect_no_out "${tree}/beta"
+  expect_no_out "${tree}/nested/beta"
+  expect_out "${tree}/alpha"
+  expect_out "${tree}/gamma"
+
+  run "${tree}" -e bet --list
+  expect_rc 1
+  expect_out "${tree}/beta"
+  expect_out "${tree}/nested/beta"
+
+  # Options may be mixed and repeated, including a name with spaces.
+  run "${tree}" -e alpha --exclude beta -e "with space" --list
+  expect_rc 1
+  expect_eq "${out}" "${tree}/gamma"
+
+  # The filter must affect actual command execution, not only --list.
+  run "${tree}" --exclude alpha -e beta -- ::: cat name.txt
+  expect_rc 0
+  expect_out "::: gamma"
+  expect_out "gamma"
+  expect_out "::: with space"
+  expect_no_out "::: alpha"
+  expect_no_out "::: beta"
+  [[ "${out}" != *"nested/beta"* ]] || fail "${current}: excluded nested repository ran"
+
+  # All excluded: no repository command should run.
+  new_tree exclude-all only
+  run "${tree}" -e only -- ::: echo should-not-run
+  expect_rc 0
+  expect_no_out "result :::"
+  expect_no_out "result echo should-not-run"
+  run "${tree}" --exclude only --list
+  expect_rc 1
+  expect_eq "${out}" ""
+
+  # --strict should not include excluded failures.
+  new_tree exclude-strict good bad
+  rm -f "${tree}/bad/name.txt"
+  run "${tree}" --strict -e bad -- ::: cat name.txt
+  expect_rc 0
+  expect_out "good"
+  expect_no_out "::: bad"
+}
+
 test_git_command() {
   new_tree gitcmd r1 r2 r3
   run "${tree}" -- log --format=%s
@@ -629,6 +689,7 @@ t "unknown options and invalid values" test_unknown_options
 t "--list" test_list
 t "--maxdepth" test_maxdepth
 t "-d / --target / --targets" test_targets
+t "-e / --exclude" test_exclude
 t "git commands" test_git_command
 t "::: bare commands" test_bare_command
 t "output order" test_output_order
