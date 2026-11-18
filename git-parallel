@@ -23,7 +23,7 @@
 #
 # Author
 #
-# Copyright (c) 2013 - 2024 Hiroshi IKEGAMI
+# Copyright (c) 2013 - 2026 Hiroshi IKEGAMI
 #
 # MIT License
 #
@@ -51,6 +51,7 @@ export GIT_PARALLEL_DEAULT_SILENT_MODE="${GIT_PARALLEL_DEAULT_SILENT_MODE:-"FALS
 export GIT_PARALLEL_DEAULT_JOBS="${GIT_PARALLEL_DEAULT_JOBS:-"2"}"
 export GIT_PARALLEL_DEAULT_MAXDEPTH="${GIT_PARALLEL_DEAULT_MAXDEPTH:-""}"
 export GIT_PARALLEL_DEAULT_START_DIR="${GIT_PARALLEL_DEAULT_START_DIR:-$(cd ./ && pwd)}"
+export GIT_PARALLEL_EXCLUDE_LIST=()
 
 GIT_PARALLEL_STRICT="FALSE"
 
@@ -76,7 +77,8 @@ OPTIONS:
   * [-l|--list]                             # List up target git repositories.
   * [-q|--silent]                           # Execute silent. (no output)
   * [-v|--verbose]                          # Execute verbose. (default.)
-  * [-d|--targets] target-derectory         # Specified target git-repositories
+  * [-d|--targets] target-dir-name          # Specified target git-repositories
+  * [-e|--exclude] exclude-repo-name        # Specified target git-repositories
   * [-F|--freeze] repository-path           # Generate .git-parallel.freeze file.
   * [--strict]                              # Exit 1 if the command fails in any repository.
 
@@ -101,6 +103,8 @@ ex)
     git parallel --maxdepth 3 --jobs 4 -- ::: ls -lha
 
     git parallel --strict -- fetch --prune || echo "fetch failed somewhere"
+
+    git parallel --exclude hoge --list
 HELP
 }
 
@@ -129,7 +133,17 @@ git::parallel::find_targets() {
         line="${line#./}"
         line="${line%/.git}"
         if [[ -n ${line} ]];then
-            TARGET_REPOSITORIES+=("${line}")
+            found=false
+            for item in "${GIT_PARALLEL_EXCLUDE_LIST[@]}"; do
+                if [[ "$item" == $(basename "${line}") ]]; then
+                    found=true
+                    break
+                fi
+            done
+
+            if [[ "$found" == false ]]; then
+                TARGET_REPOSITORIES+=("${line}")
+            fi
         fi
     done < <(find -L "${GIT_PARALLEL_DEAULT_START_DIR}" \
             ${maxdepth_opt[@]+"${maxdepth_opt[@]}"} -name '.git' \( -type d -o -type f \) )
@@ -168,7 +182,7 @@ git::parallel::color() {
 }
 
 git::parallel::version() {
-    echo "git-parallel v1.2.0"
+    echo "git-parallel v2.0.0"
 }
 
 git::parallel::freeze() {
@@ -355,7 +369,7 @@ if [[ ! $1 =~ ^-+.*$ ]] || [[ $* =~ ^-[[:blank:]]+.*$ ]];then
     exit 1
 fi
 
-optspec=":j:m:c:d:F:-:hvVlsq"
+optspec=":j:m:c:d:e:F:-:hvVlsq"
 while getopts "$optspec" optchar; do
     case "${optchar}" in
         -)
@@ -403,6 +417,10 @@ while getopts "$optspec" optchar; do
                 target|targets)
                     val="${!OPTIND}"; OPTIND=$(( OPTIND + 1 ))
                     GIT_PARALLEL_DEAULT_START_DIR="${val}"
+                    ;;
+                exclude)
+                    val="${!OPTIND}"; OPTIND=$(( OPTIND + 1 ))
+                    GIT_PARALLEL_EXCLUDE_LIST+=("${val}")
                     ;;
                 silent)
                     GIT_PARALLEL_DEAULT_SILENT_MODE="TRUE"
@@ -456,6 +474,9 @@ while getopts "$optspec" optchar; do
             ;;
         d)
             GIT_PARALLEL_DEAULT_START_DIR="${OPTARG}"
+            ;;
+        e)
+            GIT_PARALLEL_EXCLUDE_LIST+=("${OPTARG}")
             ;;
         q)
             GIT_PARALLEL_DEAULT_SILENT_MODE="TRUE"

@@ -23,7 +23,8 @@ OPTIONS:
   * [\-l|\-\-list]                             # List up target git repositories.
   * [\-q|\-\-silent]                           # Execute silent. (no output)
   * [\-v|\-\-verbose]                          # Execute verbose. (default.)
-  * [\-d|\-\-targets] target\-derectory         # Specified target git\-repositories
+  * [\-d|\-\-targets] target\-dir\-name          # Specified target git\-repositories
+  * [-\e|\-\-exclude] exclude\-repo\-name        # Specified target git\-repositories
   * [\-F|\-\-freeze] repository\-path           # Generate .git\-parallel.freeze file.
   * [\-\-strict]                              # Exit 1 if the command fails in any repository.
 
@@ -49,6 +50,8 @@ ex)
 
     git parallel \-\-strict \-\- fetch \-\-prune || echo "fetch failed somewhere"
 
+    git parallel \-\-exclude hoge \-\-list
+
 .fi
 .RE
 
@@ -56,7 +59,7 @@ ex)
 Author
 
 .PP
-Copyright (c) 2013 \- 2024 Hiroshi IKEGAMI
+Copyright (c) 2013 \- 2026 Hiroshi IKEGAMI
 
 .PP
 MIT License
