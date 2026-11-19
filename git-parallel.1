@@ -1,103 +1,398 @@
-.nh
-.TH git\-parallel
+.\" git-parallel(1) - manual page for git-parallel 2.01.
+.\" Copyright (c) 2013-2026 Hiroshi IKEGAMI
+.\" SPDX-License-Identifier: MIT
+.TH GIT-PARALLEL 1 "November 2026" "git-parallel 2.0.1" "User Commands"
 .SH NAME
+git-parallel \- execute Git or other commands across multiple repositories
+.SH SYNOPSIS
+.B git parallel
+.RI [ options ] " -- " git-command " [ arguments ...]"
+.br
+.B git parallel
+.RI [ options ] " -- ::: " command " [ arguments ...]"
+.br
+.B git parallel
+.RI [ options ] " --list"
+.br
+.B git parallel
+.RI [ options ] " --freeze " repository
+.br
+.B git parallel
+.BR --help | --version
 .PP
-git\-parallel \- Run the command in parallel much to multiple repositories
-
-.SH Usage
+The standalone executable
+.B git-parallel
+accepts the same arguments as
+.BR "git parallel" .
+.SH DESCRIPTION
+.B git-parallel
+locates Git working trees below a starting directory and runs a command
+in each selected repository.  It can run multiple commands concurrently,
+collect their output separately, and print the results in repository order.
+.PP
+By default, the command following
+.B --
+is interpreted as arguments to
+.BR git (1).
+Prefix the command with
+.B :::
+to run an executable directly instead.  Each command runs with its
+working directory set to the corresponding repository.
+.PP
+The default concurrency is two jobs.  Execution proceeds in batches of
+up to the configured job count.  All jobs in a batch are waited for before
+their captured output is printed and the next batch begins.
+.PP
+Unless
+.B --strict
+is specified, failures of commands in individual repositories do not
+make the overall invocation fail.  See
+.BR "EXIT STATUS" .
+.SH OPTIONS
+.TP
+.BR -h , " --help"
+Print usage information and exit.  The current implementation returns
+status 1 for this operation.
+.TP
+.BR -V , " --version"
+Print the program version and exit.  The current implementation returns
+status 1 for this operation.
+.TP
+.BI -j " count"
+.TQ
+.BI --jobs " count"
+Run up to
+.I count
+repository commands concurrently.  The default is 2.  The value must
+be a positive decimal integer; zero and nonnumeric values are rejected.
+.TP
+.BI -m " depth"
+.TQ
+.BI --maxdepth " depth"
+Limit the depth of repository discovery using the
+.B -maxdepth
+predicate of
+.BR find (1).
+The depth is measured from the starting directory to the discovered
+.B .git
+entry, not to the repository root.  By default, no depth limit is applied.
+.TP
+.BI -d " directory"
+.TQ
+.BI --targets " directory"
+Search for repositories under
+.I directory
+instead of the current working directory.  The long form
+.B --target
+is also accepted.  Paths are passed to
+.BR find (1)
+as supplied.
+.TP
+.BI -e " name"
+.TQ
+.BI --exclude " name"
+Exclude repositories whose directory basename is exactly
+.IR name .
+This option can be repeated.  Matching is by basename, not by full path
+or glob pattern.
+.TP
+.BR -l , " --list"
+List discovered repository paths, one per line, and exit without running
+a command.  The current implementation returns status 1 after listing.
+.TP
+.BI -F " repository"
+.TQ
+.BI --freeze " repository"
+Create or update the file
+.I .git-parallel.freeze
+in the specified repository, then exit.  The repository must contain a
+.B .git
+file or directory.  The current implementation returns status 1 after
+this operation, including when the path is not a Git repository.
+.TP
+.BI -c " mode"
+.TQ
+.BI --color " mode"
+Control colored output.  Accepted values are
+.BR auto ,
+.BR always ,
+and
+.BR never .
+The default is
+.BR auto ,
+which enables color when standard output is a terminal.  For Git
+commands, the selected mode also controls the Git
+.B color.ui
+setting.  It does not impose a color setting on arbitrary executables.
+.TP
+.BR -q , " --silent"
+Suppress normal execution output, including the initial banner and
+captured per-repository output.  Error summaries from
+.B --strict
+are still written to standard error.
+.TP
+.BR -v , " --verbose"
+Enable normal execution output.  This is the default.  If both
+.B --silent
+and
+.B --verbose
+are supplied, the last one processed takes effect.
+.TP
+.B --strict
+Return failure status if any repository command fails.  All selected
+repositories are still processed; a failure does not stop the remaining
+jobs.  At completion, failed repositories and their individual exit
+statuses are reported to standard error.
+.SH COMMAND EXECUTION
+.SS Git commands
+Without the
+.B ::: 
+prefix, the command is executed through
+.BR git (1).
+For example:
 .PP
 .RS
-
 .nf
-USAGE:
-
-  git\-parallel [OPTIONS] \-\- [GITCMD|:::CMD] # Run the command in parallel much to multiple repositories.
-
-OPTIONS:
-
-  * [\-h|\-\-help]                             # Show this help.
-  * [\-j|\-\-jobs] job\-count                   # Execute in parallel with job\-count
-  * [\-m|\-\-maxdepth] depth\-count             # Search target git\-repositories in maxdepth.
-  * [\-V|\-\-version]                          # Show git\-parallel version info.
-  * [\-c|\-\-color] auto|always|never          # Configure output color.
-  * [\-l|\-\-list]                             # List up target git repositories.
-  * [\-q|\-\-silent]                           # Execute silent. (no output)
-  * [\-v|\-\-verbose]                          # Execute verbose. (default.)
-  * [\-d|\-\-targets] target\-dir\-name          # Specified target git\-repositories
-  * [-\e|\-\-exclude] exclude\-repo\-name        # Specified target git\-repositories
-  * [\-F|\-\-freeze] repository\-path           # Generate .git\-parallel.freeze file.
-  * [\-\-strict]                              # Exit 1 if the command fails in any repository.
-
-EXIT STATUS:
-
-  Without \-\-strict the exit status is 0 even when the command fails in some
-  or all repositories (historical behavior).
-
-  With \-\-strict every repository still runs; then:
-    0        the command succeeded in every repository (frozen ones count as
-             succeeded)
-    1        it failed in at least one repository; they are listed on stderr
-             with their exit status, even with \-\-silent
-    129 130 131 143
-             git\-parallel was stopped by SIGHUP, SIGINT, SIGQUIT or SIGTERM
-             (128 + signal number); running commands are killed
-
-ex)
-
-    git parallel \-\-color auto \-\-jobs 2 \-\-silent \-\- pull \-\-rebase
-
-    git parallel \-\-maxdepth 3 \-\-jobs 4 \-\- ::: ls \-lha
-
-    git parallel \-\-strict \-\- fetch \-\-prune || echo "fetch failed somewhere"
-
-    git parallel \-\-exclude hoge \-\-list
-
+git parallel -- status --short
+git parallel -- fetch --prune
 .fi
 .RE
-
 .PP
-Author
-
+An explicit leading
+.B git
+in the command is recognized and removed, so
+.B "-- git status"
+and
+.B "-- status"
+select the same Git operation.
+.SS Other executables
+Prefix the command with
+.B :::
+to invoke a non-Git executable in each repository:
 .PP
-Copyright (c) 2013 \- 2026 Hiroshi IKEGAMI
-
+.RS
+.nf
+git parallel -- ::: ls -la
+git parallel -- ::: make test
+.fi
+.RE
 .PP
-MIT License
-
+Commands are assembled into a single string and subsequently subject
+to shell word splitting and pathname expansion.  Arguments are not
+preserved as a distinct argument vector, and the command is not evaluated
+as a complete shell script.  In particular, shell pipelines, redirections,
+and compound expressions should not be assumed to work as they would
+with
+.BR "sh -c" .
+Use an explicit script or shell invocation when shell syntax is needed,
+and test quoting carefully, especially for arguments containing spaces.
+.SH REPOSITORY DISCOVERY
+The starting directory defaults to the current working directory unless
+.B --targets
+or the corresponding environment variable overrides it.
+.B git-parallel
+uses
+.B "find -L"
+to follow symbolic links while searching for entries named
+.B .git
+that are either directories or regular files.  The parent directory of
+each matching entry is treated as a repository.
 .PP
-Permission is hereby granted, free of charge, to any person obtaining
-.br
-a copy of this software and associated documentation files (the
-.br
-"Software"), to deal in the Software without restriction, including
-.br
-without limitation the rights to use, copy, modify, merge, publish,
-.br
-distribute, sublicense, and/or sell copies of the Software, and to
-.br
-permit persons to whom the Software is furnished to do so, subject to
-.br
-the following conditions:
-.br
-
+A
+.B .git
+file is supported, including the form used by Git linked worktrees.
+Discovery is not restricted to immediate child directories.  Without
+.BR --maxdepth ,
+all reachable directory levels are searched.
 .PP
-The above copyright notice and this permission notice shall be
-.br
-included in all copies or substantial portions of the Software.
-.br
-
+Discovered repositories are processed in the order returned by
+.BR find (1);
+no alphabetical sort is performed.  Repositories with the same basename
+cannot be distinguished by
+.BR --exclude .
 .PP
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-.br
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-.br
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-.br
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
-.br
-LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-.br
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
-.br
-WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-.br
+.B --list
+shows the discovery result before command execution and does not check
+whether a repository is frozen.
+.SH PARALLEL EXECUTION AND OUTPUT
+For each repository, the program changes to its working directory and
+runs the requested command.  Standard error from the command is merged
+into its standard output.  Each job writes to a separate temporary file.
+.PP
+At most the configured number of jobs run concurrently.  The program
+waits for every job in the current batch and then prints the captured
+files in discovery order.  Output from separate repositories is therefore
+not interleaved during normal printing, although the commands execute
+concurrently.  A slow job delays printing of the entire batch.
+.PP
+In verbose mode, output includes an initial invocation banner and a
+header identifying the command and repository, followed by command output.
+In silent mode, this normal output is suppressed.  With
+.BR --strict ,
+a final failure report is still emitted on standard error.
+.PP
+Temporary output files are created below
+.B TMPDIR
+if set, or
+.I /tmp
+otherwise, and removed during normal cleanup.
+.SH FREEZE FILES
+If a repository contains a regular file named
+.IR .git-parallel.freeze ,
+.B git-parallel
+skips command execution for that repository.  It prints a skip notice
+in normal output and treats the repository as successful when calculating
+strict-mode status.
+.PP
+Create a freeze marker with:
+.PP
+.RS
+.nf
+git parallel --freeze /path/to/repository
+.fi
+.RE
+.PP
+To resume execution, remove the marker manually:
+.PP
+.RS
+.nf
+rm /path/to/repository/.git-parallel.freeze
+.fi
+.RE
+.PP
+The marker is local to the repository working tree.  It is not a Git
+configuration setting.  The
+.B --list
+operation still includes frozen repositories.
+.SH EXIT STATUS
+.TP
+.B 0
+Normal execution completed.  Without
+.BR --strict ,
+this status is returned even if commands fail in some or all repositories.
+With
+.BR --strict ,
+all executed repository commands succeeded.  Frozen repositories and an
+empty discovery result count as success.
+.TP
+.B 1
+A usage or setup error occurred, or at least one repository command
+failed under
+.BR --strict .
+The help, version, list, and freeze operations also currently exit with
+status 1; do not interpret that status as evidence that those operations
+failed.
+.TP
+.B 129, 130, 131, 143
+With
+.BR --strict ,
+execution was interrupted by SIGHUP, SIGINT, SIGQUIT, or SIGTERM,
+respectively.  Running child processes are terminated and an
+interruption message is written to standard error.
+.PP
+Without
+.BR --strict ,
+signal handling uses the historical forced-termination behavior rather
+than the strict-mode exit-status convention.
+.SH ENVIRONMENT
+The following variable names intentionally retain the spelling
+.B DEAULT
+used by the implementation.
+.TP
+.B GIT_PARALLEL_DEAULT_JOBS
+Default job count; 2 if unset or empty.
+.TP
+.B GIT_PARALLEL_DEAULT_MAXDEPTH
+Default discovery depth; unlimited if unset or empty.
+.TP
+.B GIT_PARALLEL_DEAULT_START_DIR
+Default starting directory; current working directory if unset or empty.
+.TP
+.B GIT_PARALLEL_DEAULT_COLOR_MODE
+Default color mode; auto if unset or empty.
+.TP
+.B GIT_PARALLEL_DEAULT_SILENT_MODE
+Default output mode; FALSE if unset or empty.  The implementation
+suppresses normal output when the value is exactly TRUE.
+.TP
+.B TMPDIR
+Parent directory for temporary output files; /tmp if unset or empty.
+.SH FILES
+.TP
+.I repository/.git
+Git directory or Git worktree metadata file used to discover repositories.
+.TP
+.I repository/.git-parallel.freeze
+Marker file that prevents command execution in a selected repository.
+.TP
+.I ${TMPDIR:-/tmp}/git-parallel.XXXXXX
+Temporary directory used to capture per-repository output.
+.SH EXAMPLES
+.SS Inspect multiple repositories
+.PP
+.RS
+.nf
+git parallel -- status --short
+.fi
+.RE
+.SS Fetch updates using four concurrent jobs
+.PP
+.RS
+.nf
+git parallel --jobs 4 -- fetch --prune
+.fi
+.RE
+.SS Run tests with strict failure reporting
+.PP
+.RS
+.nf
+git parallel --strict -- ::: make test
+.fi
+.RE
+.SS Restrict discovery and exclude a repository
+.PP
+.RS
+.nf
+git parallel --targets ./projects --maxdepth 3 \\
+    --exclude archived --list
+.fi
+.RE
+.SS Run a Git command quietly and detect failures
+.PP
+.RS
+.nf
+git parallel --jobs 2 --silent --strict -- pull --rebase
+.fi
+.RE
+.SS Freeze one repository
+.PP
+.RS
+.nf
+git parallel --freeze ./projects/legacy
+.fi
+.RE
+.SH NOTES
+The program operates on multiple repositories and can invoke commands
+that modify their working trees or remote state.  Review the discovered
+repositories with
+.B --list
+before running destructive operations.
+.PP
+The
+.B --strict
+option changes failure reporting, not scheduling: every selected
+repository is still attempted even when an earlier job fails.
+.SH SEE ALSO
+.BR git (1),
+.BR find (1),
+.BR bash (1),
+.BR xargs (1)
+.SH AUTHOR
+Hiroshi IKEGAMI.
+.SH BUGS
+Report issues at
+https://github.com/magicdrive/git-parallel/issues .
+.SH COPYRIGHT
+Copyright 2013\-2026 Hiroshi IKEGAMI.
+.PP
+Licensed under the MIT License.
