@@ -18,6 +18,7 @@
 #   * [-q|--silent]                         # Execute silent. (no output)
 #   * [-v|--verbose]                        # Execute verbose. (default.)
 #   * [-d|--targets] target-derectory       # Specified target git-repositories
+#   * [-e|--exclude] exclude-repo-name      # Specified target git-repositories
 #   * [-F|--freeze] repository-path         # Generate .git-parallel.freeze file.
 #   * [--strict]                            # Exit 1 if the command fails in any repository.
 #
